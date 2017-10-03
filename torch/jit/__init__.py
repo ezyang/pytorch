@@ -61,11 +61,6 @@ def compile(arg=None, **kwargs):
         original Python code and optimized code are equivalent.
 
     Keyword arguments:
-        verify (bool, optional): if True, upon all invocations of the
-            function/module, execute both the compiled and interpreted versions
-            of the model, and verify that their results match.  This is an easy
-            (albeit slow) way to check if your function/module can be validly
-            JIT compiled.  Default: False.
         nderivs (int, optional): the number of derivatives which this function/module
             will be used with.  You MUST accurately specify this number: set it too
             low and you will see an error when you attempt to run `backward`;
@@ -76,6 +71,15 @@ def compile(arg=None, **kwargs):
         optimize (bool, optional): whether or not to apply optimizations.  Default: True.
 
     Debug arguments:
+        verify (bool, optional): if True, upon all invocations of the
+            function/module, execute both the compiled and interpreted versions
+            of the model, and verify that their results match.  This is an easy
+            (albeit slow) way to check if your function/module can be validly
+            JIT compiled.  Default: False.
+        devices (iterable of device IDs, optional): the GPU devices which the
+            model being compiled will be run on.  At the moment, this argument is
+            used solely by 'verify' to determine which GPUs we need to save/restore
+            RNG state on when rerunning the model.
         time (bool, optional): if True, whenever we execute the model in question, we
             will also print out some timing information for how long the model
             took to execute.  At the moment, there are three types of timings we
@@ -297,7 +301,7 @@ class _CompiledMixin(object):
     __next_id = 0
 
     @classmethod
-    def init_compiler(cls, name=None, enabled=True, verify=False, time=False, **kwargs):
+    def init_compiler(cls, name=None, enabled=True, verify=False, devices=None, time=False, **kwargs):
         # Ensure we are not shadowing this method on the class we mixed with
         assert not hasattr(super(_CompiledMixin, cls), "init_compiler")
         # TODO: Consider saving the backtrace of this constructor, so it's easier
@@ -313,6 +317,9 @@ class _CompiledMixin(object):
         cls.__time = time
         cls.__model_name = name
         cls.__verify = verify
+        # TODO: In principle, we track device information in our trace, so it
+        # should be possible to check if the trace actually obeys this.
+        cls.__devices = devices
 
         # Monkey patch the constructor and forward functions *inplace*
         cls.__old_forward = cls.forward
@@ -347,8 +354,11 @@ class _CompiledMixin(object):
 
     # NB: In principle, there could also be a 'raw' version of this compiler,
     # but since the logic is so complicated, testing code wouldn't benefit much
-    def __new_forward(self, *args):
-        if _JIT_DISABLE or not self.__enabled:
+    def __new_forward(self, *args, **kwargs):
+        enabled = kwargs.pop("enabled", True)
+        if kwargs:
+            raise TypeError("Unrecognized keyword arguments: {}".format(kwargs.keys()))
+        if _JIT_DISABLE or not self.__enabled or not enabled:
             with _time(self.__name, "unoptimized", self.__time):
                 # Call to the saved old forward function
                 return self.__old_forward(*args)
@@ -364,8 +374,9 @@ class _CompiledMixin(object):
         if closure is not None:
             if self.__verify:
                 cloned_args = _clone_inputs(args)
-                with _fork_rng(), _time(self.__name, "unoptimized", self.__time):
-                    verify_out = self.__old_forward(*cloned_args)
+                with torch.random.fork_rng(self.__devices, _caller="torch.jit.compile"):
+                    with _time(self.__name, "unoptimized", self.__time):
+                        verify_out = self.__old_forward(*cloned_args)
             # We already compiled it!  Run it directly, and
             # use the saved out_struct to unflatten.
             with _time(ktrace.name, "optimized", self.__time):
@@ -381,10 +392,7 @@ class _CompiledMixin(object):
         assert len(unmatched) == 0
         if verify_out is not None:
             verify_out_vars, _ = _flatten(verify_out)
-            for x, y in zip(out_vars, verify_out_vars):
-                assert isinstance(x, Variable) and isinstance(y, Variable)
-                if x.data.sub(y.data).abs().max() > 1e-6:
-                    raise RuntimeError("JIT and real computation mismatch")
+            _verify_vars(out_vars, verify_out_vars, sel_fn=lambda x: x.data)
         return out
 
     def has_trace_for(self, *args):
@@ -395,6 +403,7 @@ class _CompiledMixin(object):
         if ktrace is None:
             return False
         return ktrace.maybe_closure() is not None
+
 
     # TODO: Provide more compiled code management utility methods
 
@@ -505,36 +514,6 @@ def vars_key(in_vars):
     return is_volatile, tuple(map(var_key, in_vars))
 
 
-@contextlib.contextmanager
-def _fork_rng(enabled=True):
-    """
-    Forks the RNG, so that when you return, the RNG is reset
-    to the state that it was previously in.  This is important
-    if we are evaluating a trace twice, and it incorporates
-    randomness: if we don't reset the seed, we might get totally
-    different results!
-
-    TODO: Randomness in models is a big problem for reproduceability,
-    because it means if we start executing models out of order,
-    they may behave differently.  Interesting question is whether
-    or not backwards pass ever has randomness.  I hope not.
-    """
-    if not enabled:
-        yield
-        return
-
-    cpu_rng_state = torch.get_rng_state()
-    gpu_rng_state = None
-    if torch.cuda.is_available():
-        gpu_rng_state_all = torch.cuda.get_rng_state_all()
-
-    yield
-
-    torch.set_rng_state(cpu_rng_state)
-    if gpu_rng_state is not None:
-        torch.cuda.set_rng_state_all(gpu_rng_state_all)
-
-
 # _flatten and _unflatten are inverses
 def _unflatten(input, proto):
     def unflatten_helper(input, proto):
@@ -558,7 +537,9 @@ def _flatten(obj, params=tuple()):
 def _clone_inputs(args):
     def clone_input(a):
         if isinstance(a, Variable):
-            return Variable(a.data.clone(), requires_grad=a.requires_grad, volatile=a.volatile)
+            v = Variable(a.data.clone(), requires_grad=a.requires_grad, volatile=a.volatile)
+            v.grad = a.grad.clone()
+            return v
         else:
             return a.clone()
     return function._nested_map(lambda o: isinstance(o, Variable) or isinstance(o, Tensor),
@@ -600,6 +581,56 @@ def _time(trace_name, name, time=True):
         stream.record_event(end)
         end.synchronize()
         print("{} {} time: {} ms".format(trace_name, name, start.elapsed_time(end)))
+
+
+def verify(model, args, loss_fn=torch.sum, devices=None):
+    """
+    Verify that a JIT compiled model has the same behavior
+    as its uncompiled version along with its backwards pass.
+    """
+    # TODO: Consider adding a utility function to torch.jit to test
+    # for this case
+    if not isinstance(model, _CompiledMixin):
+        raise TypeError("Cannot verify an uncompiled module.  Add @torch.jit.compile to compile it")
+
+    # Warm-up the model for this trace, if it isn't warm already.
+    # It's OK for this to perturb parameters / RNG state.
+    if not model.has_trace_for(*args):
+        out = model(*args)
+        loss = loss_fn(out)
+        loss.backward()
+        assert model.has_trace_for(*args)
+
+    verify_args = _clone_inputs(args)
+    with torch.random.fork_rng(devices, _caller="torch.jit.verify"):
+        verify_out = model(*verify_args, enabled=False)
+    out = model(*args)
+
+    out_vars, _ = _flatten(out)
+    verify_out_vars, _ = _flatten(verify_out)
+
+    _verify_vars(out_vars, verify_out_vars, sel_fn=lambda x: x.data)
+
+    # TODO: This probably won't work with reinforcement learning,
+    # because the rewards are applied randomly during backwards,
+    # but this is not deterministic!
+    with torch.random.fork_rng(devices, _caller="torch.jit.verify"):
+        verify_loss = loss_fn(verify_out)
+        verify_loss.backward()
+    loss = loss_fn(out)
+    loss.backward()
+
+    in_vars, _ = _flatten(args)
+    verify_in_vars, _ = _flatten(verify_args)
+
+    _verify_vars(in_vars, verify_in_vars, sel_fn=lambda x: x.grad.data)
+
+
+def _verify_vars(out_vars, verify_out_vars, sel_fn):
+    for x, y in zip(out_vars, verify_out_vars):
+        assert isinstance(x, Variable) and isinstance(y, Variable)
+        if sel_fn(x).sub(sel_fn(y)).abs().max() > 1e-6:
+            raise RuntimeError("JIT and real computation mismatch")
 
 
 if not torch._C._jit_init():
