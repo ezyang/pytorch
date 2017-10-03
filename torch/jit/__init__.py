@@ -1,5 +1,6 @@
 import torch.autograd.function as function
 import torch._C
+from torch import Tensor
 from torch.autograd import Variable
 from torch.nn import Module, ParameterList, Parameter
 from torch._six import raise_from
@@ -28,8 +29,7 @@ HOLE = Placeholder("HOLE")
 VOLATILE = Placeholder("VOLATILE")
 
 
-# TODO: verify is not implemented yet
-def compile(arg=None, verify=False, **kwargs):
+def compile(arg=None, **kwargs):
     """
     Decorator which marks a function or module class as eligible for
     just-in-time compilation.  The next time the function/module is executed, it
@@ -297,7 +297,7 @@ class _CompiledMixin(object):
     __next_id = 0
 
     @classmethod
-    def init_compiler(cls, name=None, enabled=True, time=False, **kwargs):
+    def init_compiler(cls, name=None, enabled=True, verify=False, time=False, **kwargs):
         # Ensure we are not shadowing this method on the class we mixed with
         assert not hasattr(super(_CompiledMixin, cls), "init_compiler")
         # TODO: Consider saving the backtrace of this constructor, so it's easier
@@ -312,6 +312,7 @@ class _CompiledMixin(object):
         cls.__enabled = enabled
         cls.__time = time
         cls.__model_name = name
+        cls.__verify = verify
 
         # Monkey patch the constructor and forward functions *inplace*
         cls.__old_forward = cls.forward
@@ -359,7 +360,12 @@ class _CompiledMixin(object):
             ktrace = TraceForKey(ktrace_name, in_key, volatile=is_volatile, **self.__ktrace_kwargs)
             self.__ktrace_cache[in_key] = ktrace
         closure = ktrace.maybe_closure()
+        verify_out = None
         if closure is not None:
+            if self.__verify:
+                cloned_args = _clone_inputs(args)
+                with _fork_rng(), _time(self.__name, "unoptimized", self.__time):
+                    verify_out = self.__old_forward(*cloned_args)
             # We already compiled it!  Run it directly, and
             # use the saved out_struct to unflatten.
             with _time(ktrace.name, "optimized", self.__time):
@@ -373,6 +379,12 @@ class _CompiledMixin(object):
             out_vars = (out_vars, )
         out, unmatched = _unflatten(out_vars, out_struct)
         assert len(unmatched) == 0
+        if verify_out is not None:
+            verify_out_vars, _ = _flatten(verify_out)
+            for x, y in zip(out_vars, verify_out_vars):
+                assert isinstance(x, Variable) and isinstance(y, Variable)
+                if x.data.sub(y.data).abs().max() > 1e-6:
+                    raise RuntimeError("JIT and real computation mismatch")
         return out
 
     def has_trace_for(self, *args):
@@ -541,6 +553,16 @@ def _flatten(obj, params=tuple()):
     obj_vars = tuple(itertools.chain(function._iter_variables(obj), params))
     obj_struct = function._nested_map(lambda o: isinstance(o, Variable), lambda x: HOLE)(obj)
     return obj_vars, obj_struct
+
+
+def _clone_inputs(args):
+    def clone_input(a):
+        if isinstance(a, Variable):
+            return Variable(a.data.clone(), requires_grad=a.requires_grad, volatile=a.volatile)
+        else:
+            return a.clone()
+    return function._nested_map(lambda o: isinstance(o, Variable) or isinstance(o, Tensor),
+                                clone_input)(args)
 
 
 # This is purely for developer debugging.  We are not going to advertise it.
