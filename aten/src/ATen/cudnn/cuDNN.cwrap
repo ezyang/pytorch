@@ -1,0 +1,279 @@
+[[
+  name: cudnn_convolution_forward
+  return: Tensor
+  arguments:
+    - Tensor input
+    - Tensor weight
+    - IntList padding
+    - IntList stride
+    - IntList dilation
+    - int64_t groups
+    - bool benchmark
+    - bool deterministic
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_forward
+]]
+
+[[
+  name: cudnn_convolution_transpose_backward
+  return: Tensor
+  arguments:
+    - Tensor grad_output
+    - Tensor weight
+    - IntList padding
+    - IntList stride
+    - IntList dilation
+    - int64_t groups
+    - bool benchmark
+    - bool deterministic
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_transpose_backward
+]]
+
+[[
+  name: cudnn_convolution_full_forward
+  return: Tensor
+  arguments:
+    - Tensor input
+    - Tensor weight
+    - type: Tensor
+      name: bias
+      nullable: True
+    - IntList padding
+    - IntList stride
+    - IntList dilation
+    - int64_t groups
+    - bool benchmark
+    - bool deterministic
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_full_forward
+]]
+
+[[
+  name: cudnn_convolution_transpose_full_forward
+  return: Tensor
+  arguments:
+    - Tensor input
+    - Tensor weight
+    - type: Tensor
+      name: bias
+      nullable: True
+    - IntList padding
+    - IntList output_padding
+    - IntList stride
+    - IntList dilation
+    - int64_t groups
+    - bool benchmark
+    - bool deterministic
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_transpose_full_forward
+]]
+
+[[
+  name: cudnn_convolution_backward
+  return: Tensor
+  arguments:
+    - IntList input_size
+    - Tensor grad_output
+    - Tensor weight
+    - IntList padding
+    - IntList stride
+    - IntList dilation
+    - int64_t groups
+    - bool benchmark
+    - bool deterministic
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_backward
+]]
+
+[[
+  name: cudnn_convolution_backward_weight
+  return: Tensor
+  arguments:
+    - IntList weight_size
+    - Tensor grad_output
+    - Tensor input
+    - IntList padding
+    - IntList stride
+    - IntList dilation
+    - int64_t groups
+    - bool benchmark
+    - bool deterministic
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_backward_weight
+]]
+
+[[
+  name: cudnn_convolution_transpose_backward_weight
+  return: Tensor
+  arguments:
+    - IntList weight_size
+    - Tensor grad_output
+    - Tensor input
+    - IntList padding
+    - IntList stride
+    - IntList dilation
+    - int64_t groups
+    - bool benchmark
+    - bool deterministic
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_transpose_backward_weight
+]]
+
+[[
+  name: cudnn_convolution_backward_bias
+  return: Tensor
+  arguments:
+    - Tensor grad_output
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_convolution_backward_bias
+]]
+
+[[
+  name: cudnn_batch_norm_forward
+  return: Tensor
+  arguments:
+    - Tensor input
+    - Tensor weight
+    - Tensor bias
+    - Tensor running_mean
+    - Tensor running_var
+    - Tensor save_mean
+    - Tensor save_var
+    - bool training
+    - double exponential_average_factor
+    - double epsilon
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_batch_norm_forward
+]]
+
+[[
+  name: cudnn_batch_norm_backward
+  return: std::tuple<Tensor,Tensor,Tensor>
+  arguments:
+    - Tensor input
+    - Tensor grad_output
+    - Tensor weight
+    - Tensor running_mean
+    - Tensor running_var
+    - Tensor save_mean
+    - Tensor save_var
+    - bool training
+    - double epsilon
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_batch_norm_backward
+]]
+
+[[
+  name: cudnn_grid_sampler
+  return: Tensor
+  arguments:
+    - Tensor input
+    - Tensor grid
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_grid_sampler_forward
+]]
+
+[[
+  name: cudnn_grid_sampler_backward
+  return: std::tuple<Tensor,Tensor>
+  arguments:
+    - Tensor input
+    - Tensor grid
+    - Tensor grad_output
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_grid_sampler_backward
+]]
+
+[[
+  name: cudnn_affine_grid_generator
+  return: Tensor
+  arguments:
+    - Tensor theta
+    - int64_t N
+    - int64_t C
+    - int64_t H
+    - int64_t W
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_affine_grid_generator_forward
+]]
+
+[[
+  name: cudnn_affine_grid_generator_backward
+  return: Tensor
+  arguments:
+    - Tensor grad_grid
+    - int64_t N
+    - int64_t C
+    - int64_t H
+    - int64_t W
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_affine_grid_generator_backward
+]]
+
+[[
+  name: cudnn_version
+  return: int64_t
+  mode: native
+  backends:
+    - CUDA
+  variants: function
+  type_method_definition_level: base
+  type_method_definition_dispatch: at::cudnn::cudnn_version
+]]

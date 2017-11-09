@@ -161,6 +161,16 @@ ELSE()
   MESSAGE(STATUS "MAGMA not found. Compiling without MAGMA support")
 ENDIF()
 
+find_package(CuDNN)
+IF(NOT CUDNN_FOUND)
+  MESSAGE(STATUS "ignoring CuDNN")
+  SET(CUDA_FLAG --no-cudnn)
+  set(AT_CUDNN_ENABLED 0)
+ELSE()
+  INCLUDE_DIRECTORIES(${CUDNN_INCLUDE_DIRS})
+  set(AT_CUDNN_ENABLED 1)
+ENDIF()
+
 
 # ARM specific flags
 FIND_PACKAGE(ARM)
@@ -337,11 +347,6 @@ IF(LAPACK_FOUND)
   SET(USE_LAPACK 1)
 ENDIF(LAPACK_FOUND)
 
-FIND_PACKAGE(CuDNN)
-IF(CUDNN_FOUND)
-  SET(USE_CUDNN 1)
-ENDIF(CUDNN_FOUND)
-
 #############################################
 
 set(ATen_CPU_SRCS)
@@ -385,6 +390,7 @@ endif()
 
 set(cwrap_files
   ${CMAKE_CURRENT_SOURCE_DIR}/src/ATen/Declarations.cwrap
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ATen/cudnn/cuDNN.cwrap
   ${CMAKE_CURRENT_SOURCE_DIR}/src/THNN/generic/THNN.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/THCUNN/generic/THCUNN.h
   ${CMAKE_CURRENT_SOURCE_DIR}/src/ATen/nn.yaml

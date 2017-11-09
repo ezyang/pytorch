@@ -7,6 +7,14 @@
 #include "ATen/NativeFunctions.h"
 #include "ATen/UndefinedType.h"
 
+#if AT_CUDNN_ENABLED()
+#include "ATen/cudnn/AffineGridGenerator.h"
+#include "ATen/cudnn/BatchNorm.h"
+#include "ATen/cudnn/Conv.h"
+#include "ATen/cudnn/GridSampler.h"
+#include "ATen/cudnn/Types.h"
+#endif
+
 #include <iostream>
 ${type_headers}
 

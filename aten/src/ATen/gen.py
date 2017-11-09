@@ -27,6 +27,7 @@ parser.add_option('-s', '--source-path', help='path to source directory for ATen
 parser.add_option('-o', '--output-dependencies',
                   help='only output a list of dependencies', action='store')
 parser.add_option('-n', '--no-cuda', action='store_true')
+parser.add_option('--no-cudnn', action='store_true')
 
 options, files = parser.parse_args()
 if options.output_dependencies is not None:
