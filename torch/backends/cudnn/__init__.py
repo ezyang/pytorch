@@ -7,7 +7,11 @@ from torch.version import cuda
 from contextlib import contextmanager
 from subprocess import Popen, PIPE
 
-enabled = True  # set to False to globally disable cuDNN
+# Write:
+#
+#   torch.backends.cudnn.enabled = False
+#
+# to globally disable CuDNN
 
 lib = None
 __cudnn_version = None
@@ -57,7 +61,7 @@ def version():
 
 
 def is_acceptable(tensor):
-    if not enabled:
+    if not torch._C._get_cudnn_enabled():
         return False
     if not (isinstance(tensor, torch.cuda.HalfTensor) or
             isinstance(tensor, torch.cuda.FloatTensor) or
@@ -108,9 +112,10 @@ CUDNN_TENSOR_OP_MATH = 1
 
 
 def set_flags(_enabled, _benchmark, _deterministic, _verbose):
-    global enabled, benchmark, deterministic, verbose
-    orig_flags = enabled, benchmark, deterministic, verbose
-    enabled, benchmark, deterministic, verbose = _enabled, _benchmark, _deterministic, _verbose
+    global benchmark, deterministic, verbose
+    orig_flags = torch._C._get_cudnn_enabled(), benchmark, deterministic, verbose
+    benchmark, deterministic, verbose = _benchmark, _deterministic, _verbose
+    torch._C._set_cudnn_enabled(_enabled)
     return orig_flags
 
 
@@ -374,3 +379,21 @@ def descriptor_sequence(tensor, batch_sizes):
 
 def add_tensor(*args):
     check_error(lib.cudnnAddTensor(*args))
+
+
+# The magic here is to allow us to intercept code like this:
+#
+#   torch.backends.cudnn.enabled = True
+
+class EnabledProp(object):
+    def __get__(self, obj, objtype):
+        return torch._C._get_cudnn_enabled()
+    def __set__(self, obj, val):
+        torch._C._set_cudnn_enabled(val)
+
+class CudnnModule(object):
+    def __init__(self, d):
+        self.__dict__ = d
+    enabled = EnabledProp()
+
+sys.modules[__name__] = CudnnModule(sys.modules[__name__].__dict__)
