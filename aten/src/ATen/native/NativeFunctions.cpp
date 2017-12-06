@@ -5,6 +5,18 @@
 #include <functional>
 #include <numeric>
 
+#if AT_CUDA_ENABLED()
+#include "THC/THC.h"
+#ifdef WITH_CUDNN
+#include <ATen/cudnn/cudnn-wrapper.h>
+#endif
+#endif
+
+// TODO: remove me
+#if AT_CUDA_ENABLED()
+extern THCState* state;
+#endif
+
 namespace at {
 namespace native {
 
