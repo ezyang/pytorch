@@ -250,7 +250,7 @@ at::Tensor generic_convolution(
     const Tensor& input_r, const Tensor& weight_r, const Tensor& bias,
     IntList padding_, IntList stride_, IntList dilation_,
     bool transposed_, IntList output_padding_,
-    int64_t groups_, bool benchmark_, bool deterministic_) {
+    int64_t groups_, bool benchmark_, bool deterministic_, bool cudnn_enabled_) {
 
   ConvParams params;
   params.stride = stride_;
@@ -261,7 +261,7 @@ at::Tensor generic_convolution(
   params.groups = groups_;
   params.benchmark = benchmark_;
   params.deterministic = deterministic_;
-  params.cudnn_enabled = globalContext().userEnabledCuDNN();
+  params.cudnn_enabled = cudnn_enabled_;
 
   // TODO: better error message here
   if (params.is_padding_neg()) throw std::runtime_error("negative padding is not supported");
@@ -433,7 +433,7 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
     const Tensor& bias,
     IntList padding_, IntList stride_, IntList dilation_,
     bool transposed_, IntList output_padding_,
-    int64_t groups_, bool benchmark_, bool deterministic_,
+    int64_t groups_, bool benchmark_, bool deterministic_, bool cudnn_enabled_,
     std::array<bool, 3> output_mask) {
 
   ConvParams params;
@@ -445,7 +445,7 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
   params.groups = groups_;
   params.benchmark = benchmark_;
   params.deterministic = deterministic_;
-  params.cudnn_enabled = globalContext().userEnabledCuDNN();
+  params.cudnn_enabled = cudnn_enabled_;
 
   // input.contiguous()
 

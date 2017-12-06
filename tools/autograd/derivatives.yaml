@@ -730,6 +730,6 @@
   grad_output: _tanh_backward(grad, output)
   output: -2 * output * grad * grad_output
 
-- name: generic_convolution(Tensor input, Tensor weight, Tensor bias, IntList padding, IntList stride, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic)
-  input, weight, bias: _generic_convolution_backward(input, grad, weight, bias, padding, stride, dilation, transposed, output_padding, groups, benchmark, deterministic, grad_input_mask)
+- name: generic_convolution(Tensor input, Tensor weight, Tensor bias, IntList padding, IntList stride, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled)
+  input, weight, bias: _generic_convolution_backward(input, grad, weight, bias, padding, stride, dilation, transposed, output_padding, groups, benchmark, deterministic, cudnn_enabled, grad_input_mask)
 
