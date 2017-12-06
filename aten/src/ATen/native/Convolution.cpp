@@ -248,7 +248,7 @@ static at::Tensor cat(TensorList tensors, int dim) {
 at::Tensor generic_convolution(
     // Alas, refcount bump needed here :(
     const Tensor& input_r, const Tensor& weight_r, const Tensor& bias,
-    IntList padding_, IntList stride_, IntList dilation_,
+    IntList stride_, IntList padding_, IntList dilation_,
     bool transposed_, IntList output_padding_,
     int64_t groups_, bool benchmark_, bool deterministic_, bool cudnn_enabled_) {
 
@@ -431,7 +431,7 @@ static std::tuple<Tensor, Tensor, Tensor> compute_backward(
 std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
     const at::Tensor& input_r, const at::Tensor& grad_output_r, const at::Tensor& weight_r,
     const Tensor& bias,
-    IntList padding_, IntList stride_, IntList dilation_,
+    IntList stride_, IntList padding_, IntList dilation_,
     bool transposed_, IntList output_padding_,
     int64_t groups_, bool benchmark_, bool deterministic_, bool cudnn_enabled_,
     std::array<bool, 3> output_mask) {
