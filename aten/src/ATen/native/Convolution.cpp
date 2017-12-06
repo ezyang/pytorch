@@ -15,16 +15,6 @@
 namespace at {
 namespace native {
 
-static auto view4d(const at::Tensor& tensor) -> at::Tensor {
-  if (tensor.ndimension() != 3) throw std::runtime_error("expected 3D tensor");
-  return tensor.unsqueeze(2);
-}
-
-static auto view3d(const at::Tensor& tensor) -> at::Tensor {
-  if (tensor.ndimension() != 4) throw std::runtime_error("expected 4D tensor");
-  return tensor.squeeze(2);
-}
-
 struct ConvParams {
   // Unconditional vector copy and allocation! Drat!
   std::vector<int64_t> stride;
@@ -153,6 +143,37 @@ auto ConvParams::is_depthwise(
          weight.size(0) % input.size(1) == 0; // output channels must be a multiple of input channels
 }
 
+
+static auto view4d(const at::Tensor& tensor) -> at::Tensor {
+  if (tensor.ndimension() != 3) throw std::runtime_error("expected 3D tensor");
+  return tensor.unsqueeze(2);
+}
+
+static auto view3d(const at::Tensor& tensor) -> at::Tensor {
+  if (tensor.ndimension() != 4) throw std::runtime_error("expected 4D tensor");
+  return tensor.squeeze(2);
+}
+
+static at::Tensor subtensor(const at::Tensor& tensor, int dim, int groups, int g) {
+  if (!tensor.defined()) {
+    return at::Tensor();
+  }
+  int64_t n = tensor.sizes()[dim] / groups;
+  return tensor.narrow(dim, n * g, n).contiguous();
+}
+
+// TODO: Use the built-in ATen cat
+static at::Tensor cat(TensorList tensors, int dim) {
+  int num_inputs = tensors.size();
+  if (num_inputs == 0) {
+    return at::Tensor();
+  }
+
+  auto output = tensors[0].type().tensor();
+  at::cat_out(output, tensors, dim);
+  return output;
+}
+
 static at::Tensor compute_output(
     const at::Tensor& input, const at::Tensor& weight, const at::Tensor& bias,
     const at::Tensor& columns, const at::Tensor& ones,
@@ -220,28 +241,6 @@ static at::Tensor compute_output(
 
   throw std::runtime_error("unsupported ConvNd parameters");
 }
-
-
-
-static at::Tensor subtensor(const at::Tensor& tensor, int dim, int groups, int g) {
-  if (!tensor.defined()) {
-    return at::Tensor();
-  }
-  int64_t n = tensor.sizes()[dim] / groups;
-  return tensor.narrow(dim, n * g, n).contiguous();
-}
-
-static at::Tensor cat(TensorList tensors, int dim) {
-  int num_inputs = tensors.size();
-  if (num_inputs == 0) {
-    return at::Tensor();
-  }
-
-  auto output = tensors[0].type().tensor();
-  at::cat_out(output, tensors, dim);
-  return output;
-}
-
 
 // TODO: Rename the THNN convolution away from conv2d_* and
 // take that namespace
