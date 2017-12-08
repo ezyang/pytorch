@@ -730,6 +730,9 @@
   grad_output: _tanh_backward(grad, output)
   output: -2 * output * grad * grad_output
 
+# TODO: The backwards here relies on undocumented naming of anonymous
+# multiple return.  At some point, please explicitly name the outputs
+# and remove this hack.
 - name: generic_convolution(Tensor input, Tensor weight, Tensor bias, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled)
-  input, weight, bias: _generic_convolution_backward(input, grad, weight, bias, stride, padding, dilation, transposed, output_padding, groups, benchmark, deterministic, cudnn_enabled, grad_input_mask)
+  input, weight, bias: _generic_convolution_backward(input, grad, weight, bias, stride, padding, dilation, transposed, output_padding, groups, benchmark, deterministic, cudnn_enabled, result1, result2, grad_input_mask)
 

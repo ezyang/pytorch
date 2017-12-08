@@ -51,7 +51,7 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1,
     return _ConvNd(input, weight, bias,
                    _single(stride), _single(padding), _single(dilation), False,
                    _single(0), groups, torch.backends.cudnn.benchmark,
-                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)
+                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)[0]
 
 
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1,
@@ -87,7 +87,7 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1,
     return _ConvNd(input, weight, bias,
                    _pair(stride), _pair(padding), _pair(dilation), False,
                    _pair(0), groups, torch.backends.cudnn.benchmark,
-                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)
+                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)[0]
 
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1,
@@ -123,7 +123,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1,
     return _ConvNd(input, weight, bias,
                    _triple(stride), _triple(padding), _triple(dilation), False,
                    _triple(0), groups, torch.backends.cudnn.benchmark,
-                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)
+                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)[0]
 
 
 def conv_transpose1d(input, weight, bias=None, stride=1, padding=0,
@@ -156,7 +156,7 @@ def conv_transpose1d(input, weight, bias=None, stride=1, padding=0,
                    _single(stride), _single(padding), _single(dilation), True,
                    _single(output_padding),
                    groups, torch.backends.cudnn.benchmark, torch.backends.cudnn.deterministic,
-                   torch.backends.cudnn.enabled)
+                   torch.backends.cudnn.enabled)[0]
 
 
 def conv_transpose2d(input, weight, bias=None, stride=1, padding=0,
@@ -189,7 +189,7 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0,
     return _ConvNd(input, weight, bias,
                    _pair(stride), _pair(padding), _pair(dilation), True,
                    _pair(output_padding), groups, torch.backends.cudnn.benchmark,
-                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)
+                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)[0]
 
 
 def conv_transpose3d(input, weight, bias=None, stride=1, padding=0,
@@ -221,7 +221,7 @@ def conv_transpose3d(input, weight, bias=None, stride=1, padding=0,
     return _ConvNd(input, weight, bias,
                    _triple(stride), _triple(padding), _triple(dilation), True,
                    _triple(output_padding), groups, torch.backends.cudnn.benchmark,
-                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)
+                   torch.backends.cudnn.deterministic, torch.backends.cudnn.enabled)[0]
 
 
 # Pooling

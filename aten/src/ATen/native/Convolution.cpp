@@ -244,7 +244,7 @@ static at::Tensor compute_output(
 
 // TODO: Rename the THNN convolution away from conv2d_* and
 // take that namespace
-at::Tensor generic_convolution(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> generic_convolution(
     // Alas, refcount bump needed here :(
     const Tensor& input_r, const Tensor& weight_r, const Tensor& bias,
     IntList stride_, IntList padding_, IntList dilation_,
@@ -277,6 +277,11 @@ at::Tensor generic_convolution(
   const auto& input = k == 3 ? view4d(input_r) : input_r;
   const auto& weight = k == 3 ? view4d(weight_r) : weight_r;
 
+  // TODO: push these allocations into THNN.  They are vestiges from
+  // when Lua didn't have a caching allocator.  We do now.
+  Tensor columns = input.type().tensor();
+  Tensor ones = input.type().tensor();
+
   Tensor output;
   if (params.is_depthwise(input, weight)) {
       auto kernel_size = weight.sizes().slice(2);
@@ -293,12 +298,6 @@ at::Tensor generic_convolution(
           params.padding, params.stride, params.dilation, params.groups, params.benchmark, params.deterministic);
     }
   } else {
-    // TODO: push these allocations into THNN.  They are vestiges from
-    // when Lua didn't have a caching allocator.  We do now.
-    // WARNING: when you do this for backwards, might have to fill
-    // ones with ones.
-    Tensor columns = input.type().tensor();
-    Tensor ones = input.type().tensor();
     if (params.groups == 1) {
       output = compute_output(
           input, weight, bias,
@@ -321,7 +320,7 @@ at::Tensor generic_convolution(
     output = view3d(output);
   }
 
-  return output;
+  return std::tuple<Tensor,Tensor,Tensor>{output, columns, ones};
 }
 
 // For Convolution strategies that don't implicitly handle grad_bias, we add a helper
@@ -332,8 +331,8 @@ static at::Tensor compute_grad_bias(const at::Tensor& grad_output) {
 }
 
 static std::tuple<Tensor, Tensor, Tensor> compute_backward(
-    at::Tensor& input, at::Tensor& grad_output, at::Tensor& weight,
-    at::Tensor& columns, at::Tensor& ones,
+    const at::Tensor& input, const at::Tensor& grad_output, const at::Tensor& weight,
+    const at::Tensor& columns, const at::Tensor& ones,
     const ConvParams& params,
     std::array<bool, 3> output_mask) {
 
@@ -433,6 +432,7 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
     IntList stride_, IntList padding_, IntList dilation_,
     bool transposed_, IntList output_padding_,
     int64_t groups_, bool benchmark_, bool deterministic_, bool cudnn_enabled_,
+    const at::Tensor& columns, const at::Tensor& ones,
     std::array<bool, 3> output_mask) {
 
   ConvParams params;
@@ -510,9 +510,6 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
     }
 #endif
   } else if (params.groups == 1) {
-    Tensor columns = input.type().tensor();
-    Tensor ones = input.type().tensor();
-    // TODO: maybe need to initialize columns/ones
     std::tie(grad_input, grad_weight, grad_bias) = compute_backward(
         input, grad_output, weight, columns, ones,
         params, output_mask);
@@ -520,8 +517,6 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
     std::vector<Tensor> grad_inputs(params.groups);
     std::vector<Tensor>  grad_weights(params.groups);
     std::vector<Tensor>  grad_biases(params.groups);
-    Tensor columns = input.type().tensor();
-    Tensor ones = input.type().tensor();
     // TODO: maybe need to initialize columns/ones
     for (int g = 0; g < params.groups; ++g) {
       auto input_g = subtensor(input, 1, params.groups, g);
