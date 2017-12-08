@@ -105,5 +105,5 @@
 - func: generic_convolution(Tensor input, Tensor weight, Tensor? bias, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled) -> (Tensor, Tensor, Tensor)
   variants: function
 
-- func: _generic_convolution_backward(Tensor input, Tensor grad_output, Tensor weight, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled, Tensor? columns, Tensor? ones, std::array<bool,3> output_mask) -> (Tensor, Tensor, Tensor)
+- func: _generic_convolution_backward(Tensor input, Tensor grad_output, Tensor weight, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled, Tensor columns, Tensor ones, std::array<bool,3> output_mask) -> (Tensor, Tensor, Tensor)
   variants: function

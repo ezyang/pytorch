@@ -42,7 +42,7 @@ def parse_arguments(args):
 
         typ = sanitize_types(t)
         assert len(typ) == 1
-        argument_dict = {'type': typ[0].rstrip('?'), 'name': name, 'nullable': typ[0].endswith('?')}
+        argument_dict = {'type': typ[0].rstrip('?'), 'name': name, 'is_nullable': typ[0].endswith('?')}
         if default is not None:
             argument_dict['default'] = default
 
