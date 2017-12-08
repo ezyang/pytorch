@@ -734,5 +734,7 @@
 # multiple return.  At some point, please explicitly name the outputs
 # and remove this hack.
 - name: generic_convolution(Tensor input, Tensor weight, Tensor bias, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled)
-  input, weight, bias: _generic_convolution_backward(input, grad, weight, bias, stride, padding, dilation, transposed, output_padding, groups, benchmark, deterministic, cudnn_enabled, result1, result2, grad_input_mask)
+  input, weight, bias: _generic_convolution_backward(input, grad, weight, stride, padding, dilation, transposed, output_padding, groups, benchmark, deterministic, cudnn_enabled, result1, result2, grad_input_mask)
 
+- name: _generic_convolution_backward(Tensor input, Tensor grad_output, Tensor weight, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled, Tensor columns, Tensor ones, std::array<bool,3> output_mask)
+  grad_output, input, weight: generic_convolution_backward_backward(grads[0], grads[1], grads[2], grad_output, weight, input, stride, padding, dilation, transposed, output_padding, groups, benchmark, deterministic, cudnn_enabled, grad_input_mask)

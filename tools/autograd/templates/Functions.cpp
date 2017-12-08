@@ -804,6 +804,258 @@ std::tuple<Tensor, Tensor, Tensor> batchnorm_double_backward(
 
 }
 
+
+static Tensor subvariable(const Tensor& var, int dim, int groups, int g) {
+  int64_t n = var.sizes()[dim] / groups;
+  auto result = var.narrow(dim, n * g, n);
+  return result;
+}
+
+std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
+    // real inputs
+    const Tensor& ggI, const Tensor& ggW_r, const Tensor& ggb,
+    // saved variables
+    const Tensor& gO_r, const Tensor& weight_r, const Tensor& input,
+    IntList stride, IntList padding, IntList dilation,
+    bool transposed, IntList output_padding,
+    int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled,
+    std::array<bool, 3> output_mask) {
+
+  Tensor ggW = ggW_r;
+  Tensor weight = weight_r;
+  Tensor gO = gO_r;
+
+  // Compute ggO = conv(ggI, w) + conv(i, ggW) + ggb
+  Tensor ggO;
+  if (ggI.defined()) {
+    if (weight.type().is_cuda()) {
+      weight = weight.contiguous();
+    }
+    ggO = std::get<0>(at::generic_convolution(
+            ggI, weight, Variable(),
+            stride, padding, dilation, transposed, output_padding, groups,
+            benchmark, deterministic, cudnn_enabled));
+  }
+
+  if (ggW.defined()) {
+    if (ggW.type().is_cuda()) {
+      ggW = ggW.contiguous();
+    }
+    auto ggW_term = std::get<0>(at::generic_convolution(
+                      input, ggW, Variable(),
+                      stride, padding, dilation, transposed, output_padding, groups,
+                      benchmark, deterministic, cudnn_enabled));
+    if (ggO.defined()) {
+      ggO = ggO + ggW_term;
+    } else {
+      ggO = ggW_term;
+    }
+  }
+
+  if (ggb.defined()) {
+    // View as (1, ggb.size(0), 1, 1...)
+
+    // Expand
+    std::vector<int64_t> new_size(gO.ndimension(), 1);
+    new_size[1] = ggb.sizes()[0];
+    auto ggb_contiguous = ggb.contiguous();
+    auto ggb_view = ggb_contiguous.view(new_size);
+
+    // Expand
+    auto ggb_expanded = ggb_view.expand(gO.sizes());
+
+    if (ggO.defined()) {
+      ggO = ggO + ggb_expanded;
+    } else {
+      ggO = ggb_expanded;
+    }
+  }
+
+  // Compute gW = conv(ggI, gO)
+  Tensor gW;
+  if (ggI.defined()) {
+    // Modified params with correct padding
+
+    // Disable groups as they are handled separately
+    int gw_conv_groups = 1;
+    auto gw_conv_dilation = stride;
+    auto gw_conv_stride = dilation;
+
+    // Transpose gO and ggI to accumulate over batch
+    auto gOt = gO.t();
+    auto ggIt = ggI.t();
+
+    Tensor gWt;
+    // Compute conv
+    if (groups == 1) {
+      if (gOt.type().is_cuda()) {
+        gOt = gOt.contiguous();
+      }
+
+      // Compute conv
+      if (transposed) {
+        gWt = std::get<0>(at::generic_convolution(
+                gOt, ggIt, Variable(),
+                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                benchmark, deterministic, cudnn_enabled
+              ));
+      } else {
+        gWt = std::get<0>(at::generic_convolution(
+                ggIt, gOt, Variable(),
+                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                benchmark, deterministic, cudnn_enabled
+              ));
+      }
+    } else {
+      std::vector<Tensor> gWt_list(groups);
+      for (int g = 0; g < groups; ++g) {
+        auto ggIt_g = subvariable(ggIt, 0, groups, g);
+        auto gOt_g = subvariable(gOt, 0, groups, g);
+        if (gOt_g.type().is_cuda()) {
+          gOt_g = gOt_g.contiguous();
+        }
+
+        // Compute conv
+        if (transposed) {
+          gWt_list[g] =
+              std::get<0>(at::generic_convolution(
+                gOt_g, ggIt_g, Variable(),
+                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                benchmark, deterministic, cudnn_enabled
+              ));
+        } else {
+          gWt_list[g] =
+              std::get<0>(at::generic_convolution(
+                ggIt_g, gOt_g, Variable(),
+                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                benchmark, deterministic, cudnn_enabled
+              ));
+        }
+      }
+
+      gWt = at::cat(gWt_list, 1);
+    }
+
+    // Transpose gW to match chan_in and chan_out
+    gW = gWt.t();
+
+    // narrow gW to only relevant portion
+    // we do it this way instead of narrowing the input itself because
+    // the ConvForward kernels don't support asymmetric padding.
+    auto gW_size = gW.sizes();
+    auto w_size = weight.sizes();
+    for (size_t i = 2; i < gW_size.size(); ++i) {
+      if (gW_size[i] > w_size[i]) {
+          gW = gW.narrow(i, 0, w_size[i]);
+          gW_size = gW.sizes();
+      }
+    }
+  }
+
+  // Compute gI = convT(ggW, gO.t()) if !transposed
+  //         gI = conv(go, ggw)      if transposed
+  Tensor gI;
+  if (ggW.defined()) {
+    auto gi_conv_transposed = !transposed;
+
+    if (transposed) {
+      if (gO.type().is_cuda()) {
+        gO = gO.contiguous();
+      }
+      gI = std::get<0>(at::generic_convolution(
+             gO, ggW, Variable(),
+             stride, padding, dilation, gi_conv_transposed, output_padding, groups,
+             benchmark, deterministic, cudnn_enabled
+           ));
+
+      // narrow gI to only relevant portion
+      // we do it this way because negative output_padding is not supported
+      // TODO: figure out if we can narrow gO and save some compute,
+      // rather than narrowing the computed gI
+      auto gI_size = gI.sizes();
+      auto i_size = input.sizes();
+      for (size_t i = 2; i < gI_size.size(); ++i) {
+        if (gI_size[i] > i_size[i]) {
+          gI = gI.narrow(i, 0, i_size[i]);
+          gI_size = gI.sizes();
+        }
+      }
+    } else {
+      auto gi_conv_groups = 1;
+      // swap stride and dilation
+      auto gi_conv_dilation = stride;
+      auto gi_conv_stride = dilation;
+
+      auto ggWt = ggW.t();
+      auto gOt = gO.t();
+
+      // calculate output_padding
+      // TODO: figure out why this needs to be computed...
+      auto kernel_size = weight.sizes().slice(2);
+      auto input_shape = input.sizes().slice(2);
+      auto grad_output_shape = gO.sizes().slice(2);
+      std::vector<int64_t> gi_conv_output_padding{ output_padding };
+
+      if (kernel_size.size() == 1) {
+        auto expected_input_shape = (kernel_size[0] - 1) * gi_conv_stride[1]
+          - 2 * padding[1]
+          + (gi_conv_dilation[1] * (grad_output_shape[0] - 1) + 1);
+        if (expected_input_shape != input_shape[0]) {
+          gi_conv_output_padding[1] = input_shape[0] - expected_input_shape;
+        }
+      } else {
+        for(size_t i = 0; i < kernel_size.size(); ++i) {
+          // Check if whole input has been used or not
+          auto expected_input_shape = (kernel_size[i] - 1) * gi_conv_stride[i]
+            - 2 * padding[i]
+            + (gi_conv_dilation[i] * (grad_output_shape[i] - 1) + 1);
+          if (expected_input_shape != input_shape[i]) {
+            gi_conv_output_padding[i] = input_shape[i] - expected_input_shape;
+          }
+        }
+      }
+
+      Tensor gIt;
+      if (groups == 1) {
+        if (gOt.type().is_cuda()) {
+          gOt = gOt.contiguous();
+        }
+
+        gIt = std::get<0>(at::generic_convolution(
+                ggWt, gOt, Variable(),
+                gi_conv_stride, padding, gi_conv_dilation, transposed, gi_conv_output_padding, gi_conv_groups,
+                benchmark, deterministic, cudnn_enabled
+              ));
+      } else {
+        std::vector<Tensor> gIt_list(groups);
+        for (int g = 0; g < groups; ++g) {
+          auto ggWt_g = subvariable(ggWt, 1, groups, g);
+          auto gOt_g = subvariable(gOt, 0, groups, g);
+          if (gOt_g.type().is_cuda()) {
+            gOt_g = gOt_g.contiguous();
+          }
+
+          gIt_list[g] = std::get<0>(at::generic_convolution(
+                          ggWt_g, gOt_g, Variable(),
+                          gi_conv_stride, padding, gi_conv_dilation, transposed, gi_conv_output_padding, gi_conv_groups,
+                          benchmark, deterministic, cudnn_enabled
+                        ));
+        }
+
+        gIt = at::cat(gIt_list, 0);
+      }
+
+      gI = gIt.t();
+    }
+  }
+
+  if (output_mask[0] && !ggO.defined()) ggO = at::zeros_like(gO);
+  if (output_mask[1] && !gI.defined()) gI = at::zeros_like(input);
+  if (output_mask[2] && !gW.defined()) gW = at::zeros_like(weight);
+
+  return {ggO, gI, gW};
+}
+
 }
 
 ${autograd_function_definitions}

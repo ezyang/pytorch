@@ -428,7 +428,6 @@ static std::tuple<Tensor, Tensor, Tensor> compute_backward(
 // THNN special case dies.
 std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
     const at::Tensor& input_r, const at::Tensor& grad_output_r, const at::Tensor& weight_r,
-    const Tensor& bias,
     IntList stride_, IntList padding_, IntList dilation_,
     bool transposed_, IntList output_padding_,
     int64_t groups_, bool benchmark_, bool deterministic_, bool cudnn_enabled_,
