@@ -1310,6 +1310,7 @@ TH_API void THNN_(VolumetricConvolutionMM_updateOutput)(
           THTensor *weight,
           THTensor *bias,           // [OPTIONAL]
           THTensor *finput,
+          THTensor *fgradInput,     // HACK to make signature line up with backward
           int kT, int kW, int kH,
           int dT, int dW, int dH,
           int pT, int pW, int pH);
@@ -1331,6 +1332,7 @@ TH_API void THNN_(VolumetricConvolutionMM_accGradParameters)(
           THTensor *gradWeight,
           THTensor *gradBias,       // [OPTIONAL]
           THTensor *finput,
+          THTensor *fgradInput,
           int kT, int kW, int kH,
           int dT, int dW, int dH,
           int pT, int pW, int pH,

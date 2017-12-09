@@ -15,6 +15,7 @@ struct TupleParser {
   void parse(double& x, const std::string& param_name);
   void parse(at::Tensor& x, const std::string& param_name);
   void parse(std::vector<int>& x, const std::string& param_name);
+  void parse(std::vector<int64_t>& x, const std::string& param_name);
   void parse(std::string& x, const std::string& param_name);
 
 protected:

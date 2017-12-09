@@ -30,7 +30,9 @@ def sanitize_types(typ):
 def parse_arguments(args):
     arguments = []
 
-    for arg in args.split(','):
+    # TODO: Use a real parser here; this will get bamboozled
+    # by signatures that contain things like std::array<bool, 2> (note the space)
+    for arg in args.split(', '):
         t, name = [a.strip() for a in arg.rsplit(' ', 1)]
         default = None
 
@@ -40,7 +42,7 @@ def parse_arguments(args):
 
         typ = sanitize_types(t)
         assert len(typ) == 1
-        argument_dict = {'type': typ[0], 'name': name}
+        argument_dict = {'type': typ[0].rstrip('?'), 'name': name, 'is_nullable': typ[0].endswith('?')}
         if default is not None:
             argument_dict['default'] = default
 

@@ -657,6 +657,37 @@ std::tuple<Tensor, Tensor> trtrs_backward(
   return std::tuple<Tensor, Tensor>{grad_b, grad_a};
 }
 
+// This function exists solely to work around a deficiency in output
+// index allocation for NN functions.  Once this is fixed, you can
+// replace in derivatives.yaml:
+//
+// - name: conv_depthwise2d(Tensor self, Tensor weight, IntList kernel_size,
+//                          Tensor bias, IntList stride, IntList padding, IntList dilation)
+//   self, weight, bias: conv_depthwise2d_backward_with_bias(grad, self, weight,
+//                          kernel_size, stride, padding, dilation, grad_input_mask)
+//
+// with:
+//
+// - name: conv_depthwise2d(Tensor self, Tensor weight, IntList kernel_size,
+//                          Tensor bias, IntList stride, IntList padding, IntList dilation)
+//   self, weight: conv_depthwise2d_backward(grad, self, weight,
+//                          kernel_size, stride, padding, dilation, grad_input_mask)
+//   bias: grad.contiguous().view({grad.size(0), grad.size(1), -1}).sum(0).sum(1)
+std::tuple<Tensor,Tensor,Tensor> conv_depthwise2d_backward_with_bias(
+    const Tensor& grad_output, const Tensor& self, const Tensor& weight,
+    IntList kernel_size, IntList stride, IntList padding, IntList dilation,
+    std::array<bool, 3> output_mask) {
+
+  Tensor grad_input, grad_weight;
+  std::tie(grad_input, grad_weight) = conv_depthwise2d_backward(grad_output, self, weight, kernel_size, stride, padding, dilation, {{output_mask[0], output_mask[1]}});
+  Tensor grad_bias;
+  if (output_mask[2]) {
+    grad_bias = grad_output.contiguous().view({grad_output.size(0), grad_output.size(1), -1}).sum(0).sum(1);
+  }
+  return std::tuple<Tensor,Tensor,Tensor>{ std::move(grad_input), std::move(grad_weight), std::move(grad_bias) };
+}
+
+
 }
 
 ${autograd_function_definitions}

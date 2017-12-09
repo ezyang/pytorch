@@ -70,7 +70,7 @@ FunctionParameter::FunctionParameter(const std::string& fmt, bool keyword_only)
 bool FunctionParameter::check(PyObject* obj) {
   switch (type_) {
     case ParameterType::TENSOR: {
-      return THPVariable_Check(obj);
+      return obj == Py_None || THPVariable_Check(obj);
     }
     case ParameterType::SCALAR: return THPUtils_checkDouble(obj);
     case ParameterType::INT64: return THPUtils_checkLong(obj);

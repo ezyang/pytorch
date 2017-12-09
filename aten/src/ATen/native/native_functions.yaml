@@ -124,3 +124,14 @@
   dispatch:
     CPU: RoiPooling2d_backward_cpu
     CUDA: RoiPooling2d_backward_cuda
+
+- func: _convolution_nogroup(Tensor input, Tensor weight, Tensor? bias, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding) -> Tensor
+  variants: function
+
+- func: _convolution(Tensor input, Tensor weight, Tensor? bias, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled) -> Tensor
+  variants: function
+
+# NB: We MUST call the input self, otherwise codegen will attempt to
+# dispatch on ggI... which might be undefined.
+- func: _convolution_double_backward(Tensor? ggI, Tensor? ggW, Tensor? ggb, Tensor gO, Tensor weight, Tensor self, IntList stride, IntList padding, IntList dilation, bool transposed, IntList output_padding, int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled, std::array<bool,3> output_mask) -> (Tensor, Tensor, Tensor)
+  variants: function

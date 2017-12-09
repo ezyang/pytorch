@@ -426,10 +426,15 @@ def load_derivatives(path, declarations_by_signature, declarations_by_name):
         fwd = declarations_by_name[fwd_name][0]
 
         derivatives = []
-        for raw_names, formula in defn.items():
-            var_names = split_names(raw_names)
-            output_indices = list(range(len(var_names)))
-            derivatives.append(create_derivative(fwd, formula, output_indices, var_names))
+        # TODO: If we can refactor preprocess_nn_function to reuse the layout
+        # code that is in the main path, this could be supported.  But it's
+        # not at the moment.
+        if len(defn) != 1:
+            raise RuntimeError("NN functions must define all their derivatives in one go (use the comma syntax).  The offending function: {}".format(base_name))
+        (raw_names, formula), = defn.items()
+        var_names = split_names(raw_names)
+        output_indices = list(range(len(var_names)))
+        derivatives.append(create_derivative(fwd, formula, output_indices, var_names))
 
         buffers = declaration['buffers']
 
@@ -465,8 +470,8 @@ def load_derivatives(path, declarations_by_signature, declarations_by_name):
 
         declarations = declarations_by_signature[signature]
         if len(declarations) == 0:
-            warnings.warn('no ATen declaration found for: {}'.format(signature))
-            continue
+            avail = [k for k, v in declarations_by_signature.values() if k.startswith(defn_name + '(') and len(v) > 0]
+            raise RuntimeError('no ATen declaration found for: {}.  Available signatures: {}'.format(signature, ', '.join(avail)))
         canonical = canonical_declaration(declarations, defn_name)
 
         # TODO: Check the types line up
