@@ -289,6 +289,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> generic_convolution(
       output = at::conv_depthwise2d_forward(input, weight, kernel_size, bias,
                 params.stride, params.padding, params.dilation);
   } else if (params.use_cudnn(input)) {
+#if AT_CUDNN_ENABLED()
     // TODO: continue adding some input checks here?  If we defer
     // they'll show up as the wrong name...
     if (params.transposed) {
@@ -300,6 +301,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> generic_convolution(
           input, weight, bias,
           params.padding, params.stride, params.dilation, params.groups, params.benchmark, params.deterministic);
     }
+#endif
   } else {
     if (params.groups == 1) {
       output = compute_output(

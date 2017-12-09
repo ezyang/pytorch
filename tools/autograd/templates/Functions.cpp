@@ -1074,7 +1074,7 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
   if (output_mask[1] && !gI.defined()) gI = at::zeros_like(input);
   if (output_mask[2] && !gW.defined()) gW = at::zeros_like(weight);
 
-  return {ggO, gI, gW};
+  return std::tuple<at::Tensor,at::Tensor,at::Tensor>{ggO, gI, gW};
 }
 
 }
