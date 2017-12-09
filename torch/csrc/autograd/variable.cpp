@@ -13,6 +13,7 @@ namespace torch { namespace autograd {
 
 Variable make_variable(at::Tensor data, std::shared_ptr<Function> grad_fn) {
   TORCH_ASSERT(grad_fn);
+  if (!data.defined()) return Variable();
   auto flags = VarFlags(true, false);
   int output_nr = grad_fn->num_inputs++;
   return make_variable(std::move(data), flags, output_nr, std::move(grad_fn));

@@ -127,6 +127,7 @@ struct FunctionParameter {
 
 inline at::Tensor PythonArgs::tensor(int i) {
   if (!args[i]) return at::Tensor();
+  if (args[i] == Py_None) return at::Tensor();
   if (!THPVariable_Check(args[i])) {
     type_error("expected Variable as argument %d, but got %s", i, THPUtils_typename(args[i]));
   }
