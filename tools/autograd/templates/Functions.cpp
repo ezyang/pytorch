@@ -821,6 +821,8 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
     int64_t groups, bool benchmark, bool deterministic, bool cudnn_enabled,
     std::array<bool, 3> output_mask) {
 
+  IntList def;
+
   Tensor ggW = ggW_r;
   Tensor weight = weight_r;
   Tensor gO = gO_r;
@@ -878,12 +880,15 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
 
     // Disable groups as they are handled separately
     int gw_conv_groups = 1;
-    auto gw_conv_dilation = stride;
+    auto gw_conv_padding = padding;
+    auto gw_conv_output_padding = output_padding;
+    // Swap dilation and stride
     auto gw_conv_stride = dilation;
+    auto gw_conv_dilation = stride;
 
     // Transpose gO and ggI to accumulate over batch
-    auto gOt = gO.t();
-    auto ggIt = ggI.t();
+    auto gOt = gO.transpose(0, 1);
+    auto ggIt = ggI.transpose(0, 1);
 
     Tensor gWt;
     // Compute conv
@@ -894,15 +899,19 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
 
       // Compute conv
       if (transposed) {
+        auto gw_conv_transposed = false;
         gWt = std::get<0>(at::generic_convolution(
                 gOt, ggIt, Variable(),
-                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                gw_conv_stride, gw_conv_padding, gw_conv_dilation,
+                gw_conv_transposed, gw_conv_output_padding, gw_conv_groups,
                 benchmark, deterministic, cudnn_enabled
               ));
       } else {
+        auto gw_conv_transposed = transposed;
         gWt = std::get<0>(at::generic_convolution(
                 ggIt, gOt, Variable(),
-                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                gw_conv_stride, gw_conv_padding, gw_conv_dilation,
+                gw_conv_transposed, gw_conv_output_padding, gw_conv_groups,
                 benchmark, deterministic, cudnn_enabled
               ));
       }
@@ -917,17 +926,21 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
 
         // Compute conv
         if (transposed) {
+          auto gw_conv_transposed = false;
           gWt_list[g] =
               std::get<0>(at::generic_convolution(
                 gOt_g, ggIt_g, Variable(),
-                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                gw_conv_stride, gw_conv_padding, gw_conv_dilation,
+                gw_conv_transposed, gw_conv_output_padding, gw_conv_groups,
                 benchmark, deterministic, cudnn_enabled
               ));
         } else {
+          auto gw_conv_transposed = transposed;
           gWt_list[g] =
               std::get<0>(at::generic_convolution(
                 ggIt_g, gOt_g, Variable(),
-                gw_conv_stride, padding, gw_conv_dilation, false, output_padding, gw_conv_groups,
+                gw_conv_stride, gw_conv_padding, gw_conv_dilation,
+                gw_conv_transposed, gw_conv_output_padding, gw_conv_groups,
                 benchmark, deterministic, cudnn_enabled
               ));
         }
@@ -937,7 +950,7 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
     }
 
     // Transpose gW to match chan_in and chan_out
-    gW = gWt.t();
+    gW = gWt.transpose(0, 1);
 
     // narrow gW to only relevant portion
     // we do it this way instead of narrowing the input itself because
@@ -956,7 +969,12 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
   //         gI = conv(go, ggw)      if transposed
   Tensor gI;
   if (ggW.defined()) {
+    auto gi_conv_stride = stride;
+    auto gi_conv_padding = padding;
+    auto gi_conv_dilation = dilation;
+    auto gi_conv_output_padding = output_padding;
     auto gi_conv_transposed = !transposed;
+    auto gi_conv_groups = groups;
 
     if (transposed) {
       if (gO.type().is_cuda()) {
@@ -964,7 +982,8 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
       }
       gI = std::get<0>(at::generic_convolution(
              gO, ggW, Variable(),
-             stride, padding, dilation, gi_conv_transposed, output_padding, groups,
+             gi_conv_stride, gi_conv_padding, gi_conv_dilation,
+             gi_conv_transposed, gi_conv_output_padding, gi_conv_groups,
              benchmark, deterministic, cudnn_enabled
            ));
 
@@ -986,8 +1005,8 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
       auto gi_conv_dilation = stride;
       auto gi_conv_stride = dilation;
 
-      auto ggWt = ggW.t();
-      auto gOt = gO.t();
+      auto ggWt = ggW.transpose(0, 1);
+      auto gOt = gO.transpose(0, 1);
 
       // calculate output_padding
       // TODO: figure out why this needs to be computed...
@@ -1023,7 +1042,8 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
 
         gIt = std::get<0>(at::generic_convolution(
                 ggWt, gOt, Variable(),
-                gi_conv_stride, padding, gi_conv_dilation, transposed, gi_conv_output_padding, gi_conv_groups,
+                gi_conv_stride, gi_conv_padding, gi_conv_dilation,
+                gi_conv_transposed, gi_conv_output_padding, gi_conv_groups,
                 benchmark, deterministic, cudnn_enabled
               ));
       } else {
@@ -1037,7 +1057,8 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
 
           gIt_list[g] = std::get<0>(at::generic_convolution(
                           ggWt_g, gOt_g, Variable(),
-                          gi_conv_stride, padding, gi_conv_dilation, transposed, gi_conv_output_padding, gi_conv_groups,
+                          gi_conv_stride, gi_conv_padding, gi_conv_dilation,
+                          gi_conv_transposed, gi_conv_output_padding, gi_conv_groups,
                           benchmark, deterministic, cudnn_enabled
                         ));
         }
@@ -1045,7 +1066,7 @@ std::tuple<Tensor, Tensor, Tensor> generic_convolution_backward_backward(
         gIt = at::cat(gIt_list, 0);
       }
 
-      gI = gIt.t();
+      gI = gIt.transpose(0, 1);
     }
   }
 
