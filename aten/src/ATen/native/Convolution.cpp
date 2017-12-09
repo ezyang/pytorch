@@ -268,14 +268,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> generic_convolution(
 
   //check_input_shape_forward(input, weight, bias, groups, transposed);
 
-  // input.contiguous()
+  Tensor input = input_r.contiguous();
+  Tensor weight = weight_r;
 
   int k = input_r.ndimension();
   if (k == 3) {
     params.view1d_as_2d();
+    input = view4d(input);
+    weight = view4d(weight);
   }
-  const auto& input = k == 3 ? view4d(input_r) : input_r;
-  const auto& weight = k == 3 ? view4d(weight_r) : weight_r;
 
   // TODO: push these allocations into THNN.  They are vestiges from
   // when Lua didn't have a caching allocator.  We do now.
@@ -288,6 +289,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> generic_convolution(
       output = at::conv_depthwise2d_forward(input, weight, kernel_size, bias,
                 params.stride, params.padding, params.dilation);
   } else if (params.use_cudnn(input)) {
+    // TODO: continue adding some input checks here?  If we defer
+    // they'll show up as the wrong name...
     if (params.transposed) {
       output = at::cudnn_convolution_transpose_full_forward(
           input, weight, bias,
@@ -445,9 +448,12 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
   params.deterministic = deterministic_;
   params.cudnn_enabled = cudnn_enabled_;
 
-  // input.contiguous()
+  if (params.is_padding_neg()) throw std::runtime_error("negative padding is not supported");
+  if (params.is_output_padding_neg()) throw std::runtime_error("negative output_padding is not supported");
 
-  Tensor input = input_r, grad_output = grad_output_r, weight = weight_r;
+  Tensor input = input_r.contiguous(),
+         grad_output = grad_output_r.contiguous(),
+         weight = weight_r;
   int k = input.ndimension();
   if (k == 3) {
     input = view4d(input);
@@ -459,8 +465,8 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
   bool use_cudnn = params.use_cudnn(input);
 
   Tensor grad_input;
-  at::Tensor grad_weight;
-  at::Tensor grad_bias;
+  Tensor grad_weight;
+  Tensor grad_bias;
 
   if (use_depthwise) {
     if (output_mask[0] || output_mask[1]) {
@@ -514,8 +520,8 @@ std::tuple<Tensor, Tensor, Tensor> _generic_convolution_backward(
         params, output_mask);
   } else {
     std::vector<Tensor> grad_inputs(params.groups);
-    std::vector<Tensor>  grad_weights(params.groups);
-    std::vector<Tensor>  grad_biases(params.groups);
+    std::vector<Tensor> grad_weights(params.groups);
+    std::vector<Tensor> grad_biases(params.groups);
     // TODO: maybe need to initialize columns/ones
     for (int g = 0; g < params.groups; ++g) {
       auto input_g = subtensor(input, 1, params.groups, g);
