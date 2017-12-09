@@ -16,9 +16,7 @@ from torch.autograd import Variable
 from .modules.utils import _single, _pair, _triple
 
 # Convolutions
-def _ConvNd(*args):
-    return [torch._C._functions.ConvNd(*args[3:])(*args[0:3])]
-#_ConvNd = torch._C._VariableBase.generic_convolution
+_ConvNd = torch._C._VariableBase.generic_convolution
 
 
 def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1,
