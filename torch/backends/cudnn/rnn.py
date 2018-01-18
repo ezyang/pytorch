@@ -35,6 +35,7 @@ class Unserializable(object):
         self.inner = None
 
 
+# Needs in fn: dropout, train, dropout_state, dropout_seed
 def init_dropout_descriptor(fn, handle):
     dropout_desc_name = 'desc_' + str(torch.cuda.current_device())
     dropout_p = fn.dropout if fn.train else 0
@@ -80,24 +81,6 @@ def init_weight_descriptor(fn, weight):
     w_view = weight.view(-1, 1, 1)  # seems that filters require >=3 dimensions
     w_desc.set(w_view)
     return w_desc
-
-
-def _input_size(fn, input):
-    if fn.batch_sizes is not None:
-        return (input.size(0), fn.input_size)
-    else:
-        return (fn.seq_length, fn.mini_batch, fn.input_size)
-
-
-def _hidden_size(fn):
-    return (fn.num_layers * fn.num_directions, fn.mini_batch, fn.hidden_size)
-
-
-def _output_size(fn, input):
-    if fn.batch_sizes is not None:
-        return (input.size(0), fn.hidden_size * fn.num_directions)
-    else:
-        return (fn.seq_length, fn.mini_batch, fn.hidden_size * fn.num_directions)
 
 
 def get_num_weights(handle, rnn_desc, x_desc, datatype):
@@ -207,102 +190,51 @@ def _copyParams(params_from, params_to):
             param_to.copy_(param_from, broadcast=False)
 
 
-def forward(fn, input, hx, weight, out_output, out_hy):
+def forward(fn, input, hx, weight):
     with torch.cuda.device_of(input):
         if fn.mode == cudnn.CUDNN_LSTM:
             hx, cx = hx
-            out_hy, out_cy = out_hy
         else:
-            cx, out_cy = None, None
+            cx = None
 
         handle = cudnn.get_handle()
+        dropout_desc = init_dropout_descriptor(fn, handle)
 
-        # blah blah backwards
-        lib = cudnn.lib
-        fn.datatype = cudnn._typemap[input.type()]
-        orig_input = input
-        is_input_packed = fn.batch_sizes is not None
-        if fn.batch_first and not is_input_packed:
-            input = input.transpose(0, 1)
-        if is_input_packed:
-            fn.seq_length = len(fn.batch_sizes)
-            fn.mini_batch = fn.batch_sizes[0]
-            fn.input_size = input.size(-1)
-        else:
-            fn.seq_length, fn.mini_batch, fn.input_size = input.size()
+        # TODO: in an ideal world, we could pass list of list direct
+        weight_arr = [Variable(w) for ws in weight for w in ws]
+        weight_stride0 = len(weight[0])
+        for ws in weight:
+            assert len(ws) == weight_stride0
 
-        hidden_size = _hidden_size(fn)
-        output_size = _output_size(fn, input)
-
-        x = input.contiguous()
-        out_output.resize_(*output_size)
-        out_hy.resize_(*hidden_size)
-        if out_cy is not None:
-            out_cy.resize_(*hidden_size)
-        y = out_output
-
-        fn.rnn_desc = init_rnn_descriptor(fn, handle)
-        if is_input_packed:
-            fn.x_descs = cudnn.descriptor_sequence(x, fn.batch_sizes)
-        else:
-            fn.x_descs = cudnn.descriptor(x[0], fn.seq_length)
-
-        # create the weight buffer and copy the weights into it
-        if fn.weight_buf is None:
-            num_weights = get_num_weights(
-                handle, fn.rnn_desc, fn.x_descs[0], fn.datatype)
-            fn.weight_buf = x.new(num_weights)
-            fn.w_desc = init_weight_descriptor(fn, fn.weight_buf)
-            # this zero might not seem necessary, but it is in the case
-            # where biases are disabled; then they won't be copied and must be zero'd.
-            # Alternatively, _copyParams could be written more carefully.
-            fn.weight_buf.zero_()
-            params = get_parameters(fn, handle, fn.weight_buf)
-            _copyParams(weight, params)
-        else:
-            fn.w_desc = init_weight_descriptor(fn, fn.weight_buf)
-
-        workspace_size = ctypes.c_long()
-        check_error(lib.cudnnGetRNNWorkspaceSize(
-            handle,
-            fn.rnn_desc,
-            fn.seq_length,
-            fn.x_descs,
-            ctypes.byref(workspace_size)
-        ))
-        fn.workspace_size = workspace_size.value
-
-        # OK actual stuff
-        #dropout_desc = init_dropout_descriptor(fn, handle)
-        dropout_state = get_dropout_state(fn, handle)
-        # Variable massaging
-        output, hy, cy, reserve = torch._C._VariableFunctions._cudnn_rnn(
-            Variable(orig_input), Variable(fn.weight_buf), Variable(hx), Variable(cx) if cx is not None else None, fn.mode, fn.hidden_size, fn.num_layers,
+        output, hy, cy, reserve, new_weight_buf = torch._C._VariableFunctions._cudnn_rnn(
+            Variable(input), weight_arr, weight_stride0,
+            Variable(fn.weight_buf) if fn.weight_buf is not None else None,
+            Variable(hx),
+            Variable(cx) if cx is not None else None,
+            fn.mode, fn.hidden_size, fn.num_layers,
             fn.batch_first, fn.dropout, fn.train, bool(fn.bidirectional),
             fn.batch_sizes if fn.batch_sizes else (),
-            Variable(dropout_state) if dropout_state is not None else None)
+            Variable(dropout_desc.state) if dropout_desc.state is not None else None)
 
-        # WOAAAAAH DUUUUDE
-        if fn.batch_first and not is_input_packed:
-            out_output.transpose_(0, 1)
-        out_output.resize_as_(output.data)
-        out_output.copy_(output.data)
-        out_hy.resize_as_(hy.data)
-        out_hy.copy_(hy.data)
-        if out_cy is not None:
-            out_cy.resize_as_(cy.data)
-            out_cy.copy_(cy.data)
+        # For backwards
+        fn.weight_buf = new_weight_buf.data
         fn.reserve = reserve.data
 
+        if cx is not None:
+            extra_outs = (hy.data, cy.data)
+        else:
+            extra_outs = hy.data
 
-def backward_grad(fn, input, hx, weight, output, grad_output, grad_hy, grad_input, grad_hx):
+        return output.data, extra_outs
+
+
+def backward_grad(fn, input, hx, weight, output, grad_output, grad_hy):
     with torch.cuda.device_of(input):
         if fn.mode == cudnn.CUDNN_LSTM:
             hx, cx = hx
-            grad_hx, grad_cx = grad_hx
             grad_hy, grad_cy = grad_hy
         else:
-            cx, grad_cx, grad_cy = None, None, None
+            cx, grad_cy = None, None
 
         handle = cudnn.get_handle()
         dropout_desc = init_dropout_descriptor(fn, handle)
@@ -315,13 +247,10 @@ def backward_grad(fn, input, hx, weight, output, grad_output, grad_hy, grad_inpu
             Variable(dropout_desc.state) if dropout_desc.state is not None else None,
             Variable(fn.reserve))
 
-        grad_input.resize_as_(dx.data)
-        grad_input.copy_(dx.data)
-        grad_hx.resize_as_(dhx.data)
-        grad_hx.copy_(dhx.data)
-        if grad_cx is not None:
-            grad_cx.resize_as_(dcx.data)
-            grad_cx.copy_(dcx.data)
+        if cx is not None:
+            return dx.data, (dhx.data, dcx.data)
+        else:
+            return dx.data, dhx.data
 
 
 def _num_linear_layers(fn):
@@ -337,7 +266,7 @@ def _num_linear_layers(fn):
         raise RuntimeError('Unknown mode: {}'.format(fn.mode))
 
 
-def backward_weight(fn, input, hx, output, weight, grad_weight):
+def backward_weight(fn, input, hx, output, weight):
     with torch.cuda.device_of(input):
         if fn.mode == cudnn.CUDNN_LSTM:
             hx, cx = hx
@@ -345,9 +274,11 @@ def backward_weight(fn, input, hx, output, weight, grad_weight):
             cx = None
 
         handle = cudnn.get_handle()
+        weight_arr = [Variable(w) for ws in weight for w in ws]
+        weight_stride0 = len(weight[0])
         dropout_desc = init_dropout_descriptor(fn, handle)
         dw = torch._C._VariableFunctions._cudnn_rnn_backward_weight(
-            Variable(input), Variable(fn.weight_buf), Variable(hx), Variable(cx) if cx is not None else None,
+            Variable(input), weight_arr, weight_stride0, Variable(fn.weight_buf), Variable(hx), Variable(cx) if cx is not None else None,
             Variable(output),
             fn.mode, fn.hidden_size, fn.num_layers,
             fn.batch_first, fn.dropout, fn.train, bool(fn.bidirectional),
@@ -355,7 +286,4 @@ def backward_weight(fn, input, hx, output, weight, grad_weight):
             Variable(dropout_desc.state) if dropout_desc.state is not None else None,
             Variable(fn.reserve))
 
-        # copy the weights from the weight_buf into grad_weight
-        grad_params = get_parameters(fn, handle, dw)
-        _copyParams(grad_params, grad_weight)
-        return grad_weight
+        return [list(map(lambda x: x.data, dw[i:i + weight_stride0])) for i in range(0, len(dw), weight_stride0)]
