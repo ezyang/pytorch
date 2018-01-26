@@ -505,18 +505,23 @@ def unpack_args(env, declaration):
 
     def get_suffix(dynamic_type, is_nullable):
         if use_unpack_any:
-            return '_any' if not is_nullable else '_any_opt'
-        elif is_nullable:
-            assert dynamic_type == 'Tensor'
-            return '_opt'
-        elif dynamic_type == 'IndexTensor':
-            return '_long'
-        elif dynamic_type == 'IntegerTensor':
-            return '_int'
+            suffix = '_any'
         elif dynamic_type == 'BoolTensor':
-            return '_byte'
+            suffix = '_byte'
+        elif dynamic_type == 'IndexTensor':
+            suffix = '_long'
+        elif dynamic_type == 'IntegerTensor':
+            suffix = '_int'
         else:
-            return ''
+            # TODO: Actually, seeing IntegerTensor here seems a bit suspicious!
+            plain_unpack = {'Tensor', 'SparseTensor', 'IntegerTensor', 'TensorList'}
+            assert dynamic_type in plain_unpack, dynamic_type
+            suffix = ''
+
+        if is_nullable:
+            suffix += '_opt'
+
+        return suffix
 
     body = []
     unpacked_args = []
