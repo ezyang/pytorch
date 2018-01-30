@@ -290,7 +290,7 @@ class CudnnRNN(NestedIOFunction):
         else:
             hy = tuple(h.new() for h in hx)
 
-        cudnn.rnn.forward(self, input, hx, weight, output, hy)
+        output, hy = cudnn.rnn.forward_improved(self, input, hx, weight)
 
         self.save_for_backward(input, hx, weight, output)
         return output, hy
@@ -303,35 +303,25 @@ class CudnnRNN(NestedIOFunction):
 
         assert cudnn.is_acceptable(input)
 
-        grad_input = input.new()
-        if torch.is_tensor(hx):
-            grad_hx = input.new()
-        else:
-            grad_hx = tuple(h.new() for h in hx)
-
         if self.retain_variables:
             self._reserve_clone = self.reserve.clone()
 
-        cudnn.rnn.backward_grad(
+        grad_input, grad_hx = cudnn.rnn.backward_grad_improved(
             self,
             input,
             hx,
             weight,
             output,
             grad_output,
-            grad_hy,
-            grad_input,
-            grad_hx)
+            grad_hy)
 
         if any(self.needs_input_grad[1:]):
-            grad_weight = [tuple(w.new().resize_as_(w) for w in layer_weight) for layer_weight in weight]
-            cudnn.rnn.backward_weight(
+            grad_weight = cudnn.rnn.backward_weight_improved(
                 self,
                 input,
                 hx,
                 output,
-                weight,
-                grad_weight)
+                weight)
         else:
             grad_weight = [(None,) * len(layer_weight) for layer_weight in weight]
 
