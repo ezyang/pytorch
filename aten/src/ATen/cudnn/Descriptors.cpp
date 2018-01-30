@@ -90,6 +90,71 @@ std::ostream& operator<<(std::ostream & out, const TensorDescriptor& d) {
 
 void TensorDescriptor::print() { std::cout << *this; }
 
+void TensorDescriptorArray::set_packed(const Tensor& t, IntList batch_sizes) {
+
+  arr.resize(batch_sizes.size());
+  for (size_t i = 0; i < batch_sizes.size(); i++) {
+    CUDNN_CHECK(cudnnCreateTensorDescriptor(&arr[i]));
+  }
+
+  int64_t pad = 5;
+  auto dim = t.ndimension();
+  if (dim > CUDNN_DIM_MAX || pad > CUDNN_DIM_MAX)
+#define _STR(X) #X
+#define STR(X) _STR(X)
+    throw std::runtime_error("cuDNN supports only up to " STR(CUDNN_DIM_MAX) " dimensions");
+#undef _STR
+#undef STR
+  int size[CUDNN_DIM_MAX];
+  int stride[CUDNN_DIM_MAX];
+  for (int i = 0; i < dim; ++i) {
+    size[i] = (int) t.size(i);
+    stride[i] = (int) t.stride(i);
+  }
+  for (int i = dim; i < pad; ++i) {
+    size[i] = 1;
+    stride[i] = 1;
+  }
+  dim = std::max(dim, pad);
+  fixSizeOneDimStride(dim, size, stride);
+  for (size_t i = 0; i < batch_sizes.size(); i++) {
+    size[0] = batch_sizes[i];
+    set_raw(i, getDataType(t), (int) dim, size, stride);
+  }
+}
+
+void TensorDescriptorArray::set_unpacked(const Tensor& t, int64_t seq_length) {
+
+  arr.resize(seq_length);
+  for (size_t i = 0; i < seq_length; i++) {
+    CUDNN_CHECK(cudnnCreateTensorDescriptor(&arr[i]));
+  }
+
+  int64_t pad = 5;
+  auto dim = t.ndimension();
+  if (dim > CUDNN_DIM_MAX || pad > CUDNN_DIM_MAX)
+#define _STR(X) #X
+#define STR(X) _STR(X)
+    throw std::runtime_error("cuDNN supports only up to " STR(CUDNN_DIM_MAX) " dimensions");
+#undef _STR
+#undef STR
+  int size[CUDNN_DIM_MAX];
+  int stride[CUDNN_DIM_MAX];
+  for (int i = 0; i < dim; ++i) {
+    size[i] = (int) t.size(i);
+    stride[i] = (int) t.stride(i);
+  }
+  for (int i = dim; i < pad; ++i) {
+    size[i] = 1;
+    stride[i] = 1;
+  }
+  dim = std::max(dim, pad);
+  fixSizeOneDimStride(dim, size, stride);
+  for (size_t i = 0; i < seq_length; i++) {
+    set_raw(i, getDataType(t), (int) dim, size, stride);
+  }
+}
+
 void FilterDescriptor::set(const at::Tensor &t, int64_t pad) {
   auto dim = t.ndimension();
   if (dim > CUDNN_DIM_MAX || pad > CUDNN_DIM_MAX)

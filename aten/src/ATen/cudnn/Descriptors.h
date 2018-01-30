@@ -148,6 +148,36 @@ private:
 
 std::ostream& operator<<(std::ostream & out, const TensorDescriptor& d);
 
+// Sigh
+class TensorDescriptorArray
+{
+  std::vector<cudnnTensorDescriptor_t> arr;
+public:
+  TensorDescriptorArray() : arr() {}
+  TensorDescriptorArray& operator=(TensorDescriptorArray&& x) {
+    std::swap(arr, x.arr);
+    return *this;
+  }
+  TensorDescriptorArray(TensorDescriptorArray&& x) {
+    std::swap(arr, x.arr);
+  }
+  ~TensorDescriptorArray() {
+    for (auto ptr : arr) {
+      CUDNN_CHECK(cudnnDestroyTensorDescriptor(ptr));
+    }
+  }
+  cudnnTensorDescriptor_t* descs() {
+    return arr.data();
+  }
+  void set_packed(const at::Tensor& t, IntList batch_sizes);
+  void set_unpacked(const at::Tensor& t, int64_t seq_length);
+
+private:
+  void set_raw(size_t i, cudnnDataType_t dataType, int dim, int* size, int* stride) {
+    CUDNN_CHECK(cudnnSetTensorNdDescriptor(arr[i], dataType, dim, size, stride));
+  }
+};
+
 class FilterDescriptor
   : public Descriptor<cudnnFilterStruct,
                       &cudnnCreateFilterDescriptor,
