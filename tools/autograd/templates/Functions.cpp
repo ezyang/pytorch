@@ -478,6 +478,7 @@ Tensor select_backward_scalar(Tensor grad, const Tensor & input, const Tensor & 
 #ifdef WITH_SCALARS
   grad_input.masked_fill_(input == value, grad);
 #else
+  AT_ASSERT(grad.isVariable(), "select_backward_scalar grad is variable");
   auto grad_data = static_cast<Variable&>(grad).data();
   grad_input.masked_fill_(input == value, Scalar(grad_data[0]));
 #endif

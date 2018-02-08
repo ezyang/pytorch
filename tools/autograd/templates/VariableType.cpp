@@ -316,6 +316,7 @@ static void throw_error_out_requires_grad(const char* name) {
 
 static void rebase_history(Tensor& tensor, std::shared_ptr<Function> grad_fn) {
   if (grad_fn && tensor.defined()) {
+    AT_ASSERT(tensor.isVariable(), "rebase_history: isVariable");
     auto& var = static_cast<Variable&>(tensor);
     grad_fn->num_inputs = 1;
     var.rebase_history(0, std::move(grad_fn));
@@ -328,6 +329,7 @@ static void rebase_history(TensorList tensors, std::shared_ptr<Function> grad_fn
     int output_nr = 0;
     for (auto& tensor : tensors) {
       if (tensor.defined()) {
+        AT_ASSERT(tensor.isVariable(), "rebase_history: isVariable");
         auto& var = static_cast<Variable&>(const_cast<Tensor&>(tensor));
         var.rebase_history(output_nr, grad_fn);
       }
@@ -340,6 +342,7 @@ static void rebase_history(TensorList tensors, std::shared_ptr<Function> grad_fn
 // overload for functions with multiple differentiable outputs.
 static void set_history(Tensor& tensor, std::shared_ptr<Function> grad_fn) {
   if (grad_fn && tensor.defined()) {
+    AT_ASSERT(tensor.isVariable(), "set_history: isVariable");
     auto& var = static_cast<Variable&>(tensor);
     grad_fn->num_inputs = 1;
     var.get()->output_nr = 0;
@@ -353,6 +356,7 @@ static void set_history(TensorList tensors, std::shared_ptr<Function> grad_fn) {
     int64_t output_nr = 0;
     for (auto& tensor : tensors) {
       if (tensor.defined()) {
+        AT_ASSERT(tensor.isVariable(), "set_history: isVariable");
         auto& var = static_cast<Variable&>(const_cast<Tensor&>(tensor));
         var.get()->output_nr = output_nr;
         var.get()->_grad_fn = grad_fn;
