@@ -155,6 +155,7 @@ struct VariableViewImpl : public VariableImpl {
 
 inline Variable make_variable(at::Tensor data, bool requires_grad=false) {
   if (!data.defined()) {
+    throw std::runtime_error("make_variable undefined");
     return Variable();
   }
 
@@ -170,6 +171,7 @@ inline Variable make_variable(at::Tensor data, bool requires_grad=false) {
 
 inline Variable make_variable(at::Tensor data, int output_nr, std::shared_ptr<Function> grad_fn) {
   if (!data.defined()) {
+    throw std::runtime_error("make_variable undefined");
     return Variable();
   }
 
@@ -188,6 +190,7 @@ Variable make_variable(at::Tensor data, std::shared_ptr<Function> grad_fn);
 inline Variable make_variable_view(Variable base, at::Tensor data, int output_nr=0,
                                    std::shared_ptr<Function> grad_fn=nullptr) {
   if (!data.defined()) {
+    throw std::runtime_error("make_variable undefined");
     return Variable();
   }
 

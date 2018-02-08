@@ -177,7 +177,7 @@ function build_aten() {
   -DATEN_NO_CONTRIB=1 \
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=1
-  # purpusefully not passing C_FLAGS for the same reason as above
+  # purposefully not passing C_FLAGS for the same reason as above
   ${CMAKE_INSTALL} -j$(getconf _NPROCESSORS_ONLN)
   cd ../..
 }

@@ -315,7 +315,8 @@ static void throw_error_out_requires_grad(const char* name) {
 }
 
 static void rebase_history(Tensor& tensor, std::shared_ptr<Function> grad_fn) {
-  if (grad_fn && tensor.defined()) {
+  if (grad_fn) {
+    if (!tensor.defined()) throw std::runtime_error("DOGGO");
     AT_ASSERT(tensor.isVariable(), "rebase_history: isVariable");
     auto& var = static_cast<Variable&>(tensor);
     grad_fn->num_inputs = 1;
@@ -332,6 +333,8 @@ static void rebase_history(TensorList tensors, std::shared_ptr<Function> grad_fn
         AT_ASSERT(tensor.isVariable(), "rebase_history: isVariable");
         auto& var = static_cast<Variable&>(const_cast<Tensor&>(tensor));
         var.rebase_history(output_nr, grad_fn);
+      } else {
+        throw std::runtime_error("DOGGO");
       }
       output_nr++;
     }

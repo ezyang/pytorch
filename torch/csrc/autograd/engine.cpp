@@ -45,16 +45,20 @@ struct FunctionTask {
   // gradients flowing here.  Once all the dependencies are finished, we
   // use the contents of this buffer to run the function.
   InputBuffer inputs;
+  uint64_t time;
 
   FunctionTask(GraphTask* base, std::shared_ptr<Function> fn, InputBuffer inputs)
     : base(base)
     , fn(fn)
-    , inputs(std::move(inputs)) {}
+    , time(fn->time)
+    , inputs(std::move(inputs)) {
+      AT_ASSERT(fn != nullptr, "FunctionTask: fn is null");
+    }
 };
 
 struct CompareFunctionTaskTime {
   bool operator()(FunctionTask const & t1, FunctionTask const & t2) {
-    return t1.fn->time < t2.fn->time;
+    return t1.time < t2.time;
   }
 };
 
