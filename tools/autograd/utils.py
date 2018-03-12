@@ -34,6 +34,12 @@ def split_name_params(prototype):
     return name, params.split(', ')
 
 
+def uninplace_api_name(api_name):
+    if api_name.endswith('_') and not api_name.endswith('__'):
+        api_name = api_name[:-1]
+    return api_name
+
+
 def write(dirname, name, template, env):
     env['generated_comment'] = GENERATED_COMMENT.substitute(filename=name)
     path = os.path.join(dirname, name)

@@ -25,7 +25,7 @@
 from __future__ import print_function
 import os
 import sys
-from .utils import CodeTemplate, nested_dict, write
+from .utils import CodeTemplate, nested_dict, write, uninplace_api_name
 from .gen_autograd import VIEW_FUNCTIONS, template_path, \
     HARDCODED_DIFFERENTIABLE_OUTPUTS
 from .gen_autograd_functions import uses_single_grad
@@ -116,10 +116,13 @@ if (${cond}) {
 RECORD_FUNCTION = CodeTemplate("""\
 profiler::RecordFunction profiler("${name}");""")
 
+# TODO: I'd like to use all built-in interned strings here, but we're
+# not generating enough identifiers into aten_interned_strings.h for
+# some reason
 PRE_RECORD_TRACE = CodeTemplate("""\
 jit::tracer::PreTraceInfo trace_info;
 if (jit::tracer::isTracing( ${tensor_args} )) {
-  trace_info = jit::tracer::preRecordTrace( "${trace_name}", ${trace_inputs} );
+  trace_info = jit::tracer::preRecordTrace( jit::aten::${trace_name}, ${trace_inputs} );
   ${record_attributes}
 }
 """)
@@ -130,8 +133,11 @@ if (trace_info.state != nullptr) {
 }
 """)
 
+# TODO: I'd like to use all built-in interned strings here, but we're
+# not generating enough identifiers into aten_interned_strings.h for
+# some reason
 RECORD_ATTRIBUTE = CodeTemplate("""\
-setattr(trace_info.n, jit::Symbol("${name}"), ${name});""")
+        setattr(trace_info.n, jit::attr::${name}, ${name});""")
 
 
 def gen_variable_type(out, aten_declarations):
@@ -367,9 +373,13 @@ def emit_body(declaration):
                 continue
             local['record_attributes'].append(RECORD_ATTRIBUTE.substitute(name=arg['name']))
 
-        local['trace_name'] = declaration['api_name']
-        if local['trace_name'].endswith('_'):
-            local['trace_name'] = local['trace_name'][:-1]
+        # Record inplace operations as out-of-place operations (e.g.,
+        # not add_ but add); HOWEVER, don't treat __and__ as an inplace
+        # operation.
+        # TODO: Add a proper concept of side effects to the IR, and
+        # properly record inplace operations.
+        # TODO: The underscore test here is not very robust
+        local['trace_name'] = uninplace_api_name(declaration['api_name'])
 
         local['trace_outputs'] = get_trace_outputs(declaration)
 
