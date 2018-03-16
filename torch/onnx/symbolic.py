@@ -130,6 +130,7 @@ def add(g, self, other, alpha):
     # See Note [Pointwise by scalar]
     return g.op("Add", self, _if_scalar_type_as(other, self), **_broadcast_if_scalar(other))
 
+
 def sub(g, self, other, alpha):
     if _scalar(alpha) != 1:
         return _unimplemented("sub", "alpha != 1")

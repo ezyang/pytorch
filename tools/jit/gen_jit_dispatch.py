@@ -216,9 +216,9 @@ def gen_jit_dispatch(declarations, out):
     # NB: This grabs non keyword arguments too, but it's harmless
     attrs = set(arg['name'] for decl in aten_decls for arg in decl['arguments'])
     strings_env = {
-            'aten_symbols': ["_(aten, {}) \\".format(n) for n in sorted(names)],
-            'attr_symbols': ["_(attr, {}) \\".format(n) for n in sorted(attrs)]
-            }
+        'aten_symbols': ["_(aten, {}) \\".format(n) for n in sorted(names)],
+        'attr_symbols': ["_(attr, {}) \\".format(n) for n in sorted(attrs)]
+    }
 
     write(out, 'aten_interned_strings.h', ATEN_INTERNED_STRINGS_H, strings_env)
 

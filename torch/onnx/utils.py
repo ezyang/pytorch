@@ -346,7 +346,8 @@ def _run_symbolic_function(g, n, inputs, aten=False):
                 return None
 
         else:
-            warnings.warn("ONNX export failed on an operator with unrecognized namespace {}::{}; please report a bug".format(ns, op_name))
+            warnings.warn("ONNX export failed on an operator with unrecognized namespace {}::{}; "
+                          "please report a bug".format(ns, op_name))
             return None
 
     except TypeError as e:
