@@ -17,10 +17,10 @@ struct CUDAHooks : public at::detail::CUDAHooksInterface {
   void registerCUDATypes(Context*) const override;
 };
 
-// Sigh, the registry doesn't support namespaces :(
-using at::detail::RegistererCUDAHooksRegistry;
-using at::detail::CUDAHooksRegistry;
-
-REGISTER_CUDA_HOOKS(CUDAHooks);
-
 }}} // at::cuda::detail
+
+// Unfortunately, REGISTER_CUDA_HOOKS doesn't understand how to absolutely
+// qualify reference to at::detail::CUDAHooksRegistry
+namespace at { namespace detail {
+REGISTER_CUDA_HOOKS(at::cuda::detail::CUDAHooks);
+}};
