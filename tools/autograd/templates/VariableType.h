@@ -51,7 +51,8 @@ struct VariableType final : public at::Type {
   static at::Type* getType(const at::Type& baseType);
   static at::Type* getType(const at::Tensor& tensor);
   static bool isVariableType(const at::Type& type);
-  static std::vector<at::Type*> allTypes();
+  static std::vector<at::Type*> allCUDATypes();
+  static std::vector<at::Type*> allCPUTypes();
 
   virtual Tensor & s_copy_(Tensor & self, const Tensor & src, bool non_blocking) const override;
   virtual Tensor & _s_copy_from(const Tensor & self, Tensor & dst, bool non_blocking) const override;

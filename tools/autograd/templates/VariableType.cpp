@@ -193,16 +193,29 @@ at::Type* VariableType::getType(const at::Tensor& tensor) {
   return getType(tensor.type());
 }
 
-std::vector<at::Type*> VariableType::allTypes() {
-  // TODO: eliminate this eager initialization of CUDA
+std::vector<at::Type*> VariableType::allCPUTypes() {
+  auto& context = at::globalContext();
+  std::vector<Type*> res;
+  // CPU and Sparse CPU
+  res.reserve(2 * static_cast<int>(ScalarType::NumOptions));
+  for (auto p : { Backend::CPU, Backend::SparseCPU }) {
+    for (int s = 0; s < static_cast<int>(ScalarType::NumOptions); s++) {
+      auto* r = context.type_registry[static_cast<int>(at::IsVariable::Variable)][static_cast<int>(p)][s].get();
+      if (r) res.emplace_back(r);
+    }
+  }
+  return res;
+}
+
+std::vector<at::Type*> VariableType::allCUDATypes() {
   auto& context = at::globalContext();
   context.lazyInitCUDA();
   std::vector<Type*> res;
-  // NB: This will overreserve for undefined, but that should be harmless enough
-  res.reserve(static_cast<int>(Backend::NumOptions) * static_cast<int>(ScalarType::NumOptions));
-  for (int p = 0; p < static_cast<int>(Backend::NumOptions); ++p) {
+  // CUDA and Sparse CUDA
+  res.reserve(2 * static_cast<int>(ScalarType::NumOptions));
+  for (auto p : { Backend::CUDA, Backend::SparseCUDA }) {
     for (int s = 0; s < static_cast<int>(ScalarType::NumOptions); s++) {
-      auto* r = context.type_registry[static_cast<int>(at::IsVariable::Variable)][p][s].get();
+      auto* r = context.type_registry[static_cast<int>(at::IsVariable::Variable)][static_cast<int>(p)][s].get();
       if (r) res.emplace_back(r);
     }
   }
