@@ -141,6 +141,7 @@ ENDIF()
 # TODO: Maybe put this in the generated files directory
 CONFIGURE_FILE(Config.h.in "${CMAKE_CURRENT_SOURCE_DIR}/Config.h")
 
+# NB: If you edit these globs, you'll have to update setup.py package_data as well
 FILE(GLOB base_h RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.h" "detail/*.h")
 FILE(GLOB base_cpp RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp" "detail/*.cpp")
 
