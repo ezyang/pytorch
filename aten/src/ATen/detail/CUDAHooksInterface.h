@@ -34,7 +34,7 @@ namespace at { namespace detail {
 // TODO: Consider putting the stub definitions in another class, so that one
 // never forgets to implement each virtual function in the real implementation
 // in CUDAHooks.  This probably doesn't buy us much though.
-struct CUDAHooksInterface {
+struct AT_API CUDAHooksInterface {
 
   // Initialize THCState and, transitively, the CUDA state
   virtual std::unique_ptr<THCState, void(*)(THCState*)> initCUDA() const {
@@ -77,11 +77,11 @@ struct CUDAHooksInterface {
 
 // NB: dummy argument to suppress "ISO C++11 requires at least one argument
 // for the "..." in a variadic macro"
-struct CUDAHooksArgs {};
+struct AT_API CUDAHooksArgs {};
 
 AT_DECLARE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface, CUDAHooksArgs);
 #define REGISTER_CUDA_HOOKS(clsname) AT_REGISTER_CLASS(CUDAHooksRegistry, clsname, clsname)
 
-const CUDAHooksInterface& getCUDAHooks();
+AT_API const CUDAHooksInterface& getCUDAHooks();
 
 }} // namespace at::detail

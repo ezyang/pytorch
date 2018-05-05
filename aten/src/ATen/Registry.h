@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <ATen/Error.h>
+#include <ATen/ATenGeneral.h>
 
 namespace at {
 
@@ -40,7 +41,7 @@ inline void PrintOffendingKey(const std::string& key) {
  * objects.
  */
 template <class SrcType, class ObjectPtrType, class... Args>
-class Registry {
+class AT_API Registry {
  public:
   typedef std::function<ObjectPtrType(Args...)> Creator;
 
@@ -150,7 +151,7 @@ class Registerer {
  */
 #define AT_DECLARE_TYPED_REGISTRY(                                    \
     RegistryName, SrcType, ObjectType, PtrType, ...)                     \
-  Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>* RegistryName(); \
+  AT_API Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>* RegistryName(); \
   typedef Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>        \
       Registerer##RegistryName;
 

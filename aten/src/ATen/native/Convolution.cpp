@@ -106,6 +106,8 @@ auto ConvParams::view1d_as_2d() -> void {
 }
 
 auto ConvParams::use_cudnn(const at::Tensor& input) const -> bool {
+	// TODO: FIXME
+	/*
 #if AT_CUDNN_ENABLED()
   if (!input.type().is_cuda() || !cudnn_enabled) {
     return false;
@@ -123,6 +125,7 @@ auto ConvParams::use_cudnn(const at::Tensor& input) const -> bool {
 #else
   (void)input; // avoid unused parameter warning
 #endif
+*/
   return false;
 }
 

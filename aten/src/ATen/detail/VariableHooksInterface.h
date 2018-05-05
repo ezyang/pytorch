@@ -17,7 +17,7 @@ namespace at { namespace detail {
 //
 // We may choose to absorb autograd into ATen, in which case this interface is obsolete.
 //
-struct VariableHooksInterface {
+struct AT_API VariableHooksInterface {
 
   virtual void registerVariableTypeFor(Context*, Backend backend, ScalarType scalar_type) const {
     // no-op if Variable not available; it'll get handled (if at all) when
@@ -28,11 +28,11 @@ struct VariableHooksInterface {
 
 // NB: dummy argument to suppress "ISO C++11 requires at least one argument
 // for the "..." in a variadic macro"
-struct VariableHooksArgs {};
+struct AT_API VariableHooksArgs {};
 
 AT_DECLARE_REGISTRY(VariableHooksRegistry, VariableHooksInterface, VariableHooksArgs);
 #define REGISTER_VARIABLE_HOOKS(clsname) AT_REGISTER_CLASS(VariableHooksRegistry, clsname, clsname)
 
-const VariableHooksInterface& getVariableHooks();
+AT_API const VariableHooksInterface& getVariableHooks();
 
 }} // namespace at::detail
