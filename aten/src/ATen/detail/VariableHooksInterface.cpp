@@ -12,7 +12,7 @@ const VariableHooksInterface& getVariableHooks() {
   std::lock_guard<std::mutex> lock(var_hooks_mutex);
 
   if (!var_hooks) {
-    var_hooks = VariableHooksRegistry()->Create("VariableHooks");
+    var_hooks = VariableHooksRegistry()->Create("VariableHooks", VariableHooksArgs{});
   }
   if (var_hooks) {
     return *var_hooks;
@@ -20,6 +20,6 @@ const VariableHooksInterface& getVariableHooks() {
   return *default_var_hooks;
 }
 
-AT_DEFINE_REGISTRY(VariableHooksRegistry, VariableHooksInterface);
+AT_DEFINE_REGISTRY(VariableHooksRegistry, VariableHooksInterface, VariableHooksArgs);
 
 }} // namespace at::detail

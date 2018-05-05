@@ -26,7 +26,11 @@ struct VariableHooksInterface {
 
 };
 
-AT_DECLARE_REGISTRY(VariableHooksRegistry, VariableHooksInterface);
+// NB: dummy argument to suppress "ISO C++11 requires at least one argument
+// for the "..." in a variadic macro"
+struct VariableHooksArgs {};
+
+AT_DECLARE_REGISTRY(VariableHooksRegistry, VariableHooksInterface, VariableHooksArgs);
 #define REGISTER_VARIABLE_HOOKS(clsname) AT_REGISTER_CLASS(VariableHooksRegistry, clsname, clsname)
 
 const VariableHooksInterface& getVariableHooks();

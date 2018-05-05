@@ -75,7 +75,11 @@ struct CUDAHooksInterface {
 
 };
 
-AT_DECLARE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface);
+// NB: dummy argument to suppress "ISO C++11 requires at least one argument
+// for the "..." in a variadic macro"
+struct CUDAHooksArgs {};
+
+AT_DECLARE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface, CUDAHooksArgs);
 #define REGISTER_CUDA_HOOKS(clsname) AT_REGISTER_CLASS(CUDAHooksRegistry, clsname, clsname)
 
 const CUDAHooksInterface& getCUDAHooks();

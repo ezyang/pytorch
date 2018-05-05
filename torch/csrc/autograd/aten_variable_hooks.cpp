@@ -5,6 +5,7 @@
 namespace torch { namespace autograd {
 
 struct VariableHooks : public at::detail::VariableHooksInterface {
+  VariableHooks(at::detail::VariableHooksArgs) {}
   void registerVariableTypeFor(at::Context*, at::Backend, at::ScalarType) const override;
 };
 

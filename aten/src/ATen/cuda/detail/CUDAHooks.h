@@ -6,6 +6,7 @@ namespace at { namespace cuda { namespace detail {
 
 // The real implementation of CUDAHooksInterface
 struct CUDAHooks : public at::detail::CUDAHooksInterface {
+  CUDAHooks(at::detail::CUDAHooksArgs) {}
   std::unique_ptr<THCState, void(*)(THCState*)> initCUDA() const override;
   std::unique_ptr<Generator> initCUDAGenerator(Context*) const override;
   bool hasCUDA() const override;

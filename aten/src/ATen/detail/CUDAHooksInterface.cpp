@@ -13,7 +13,7 @@ const CUDAHooksInterface& getCUDAHooks() {
   // safe...)
   static std::once_flag once;
   std::call_once(once, []{
-    cuda_hooks = CUDAHooksRegistry()->Create("CUDAHooks");
+    cuda_hooks = CUDAHooksRegistry()->Create("CUDAHooks", CUDAHooksArgs{});
     if (!cuda_hooks) {
       cuda_hooks = std::unique_ptr<CUDAHooksInterface>(new CUDAHooksInterface());
     }
@@ -21,6 +21,6 @@ const CUDAHooksInterface& getCUDAHooks() {
   return *cuda_hooks;
 }
 
-AT_DEFINE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface);
+AT_DEFINE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface, CUDAHooksArgs);
 
 }} // namespace at::detail
