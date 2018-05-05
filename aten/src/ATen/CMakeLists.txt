@@ -250,13 +250,11 @@ if(CUDA_FOUND)
   cuda_add_library(ATen_cuda ${AT_LINK_STYLE} ${all_cuda_cpp})
   add_dependencies(ATen_cuda cuda_aten_files_are_generated)
 endif()
-add_library(ATen ${AT_LINK_STYLE})
+add_library(ATen ${AT_LINK_STYLE} stub/CombinedStub.cpp)
 target_link_libraries(ATen ATen_cpu)
 if(CUDA_FOUND)
   target_link_libraries(ATen ATen_cuda)
 endif()
-# Because there are no source files in ATen
-set_target_properties(ATen PROPERTIES LINKER_LANGUAGE CXX)
 
 function(aten_compile_options libname)
   target_compile_options(${libname}
