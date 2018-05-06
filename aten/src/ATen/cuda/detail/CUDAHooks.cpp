@@ -2,8 +2,14 @@
 #include <ATen/cuda/PinnedMemoryAllocator.h>
 #include <ATen/CUDAGenerator.h>
 #include <ATen/RegisterCUDA.h>
+#include <ATen/cuda/CUDAConfig.h>
+#include <ATen/Context.h>
 
 #include "THC/THC.h"
+
+#if AT_CUDNN_ENABLED()
+#include "ATen/cudnn/cudnn-wrapper.h"
+#endif
 
 #include <cuda.h>
 
@@ -60,6 +66,37 @@ std::unique_ptr<Allocator> CUDAHooks::newPinnedMemoryAllocator() const {
 
 void CUDAHooks::registerCUDATypes(Context* context) const {
   register_cuda_types(context);
+}
+
+bool CUDAHooks::compiledWithCuDNN() const {
+  return AT_CUDNN_ENABLED();
+}
+
+bool CUDAHooks::supportsDilatedConvolutionWithCuDNN() const {
+#if AT_CUDNN_ENABLED()
+  cudaDeviceProp* prop = getCurrentDeviceProperties(globalContext().getTHCState());
+  // NOTE: extra parenthesis around numbers disable clang warnings about
+  // dead code
+  return ((CUDNN_VERSION >= (6021)) || (CUDNN_VERSION >= (6000) && prop->major >= 5));
+#else
+  return false;
+#endif
+}
+
+long CUDAHooks::versionCuDNN() const {
+#if AT_CUDNN_ENABLED()
+  return CUDNN_VERSION;
+#else
+  AT_ERROR("Cannot query CuDNN version if ATen_cuda is not built with CuDNN");
+#endif
+}
+
+double CUDAHooks::batchnormMinEpsilonCuDNN() const {
+#if AT_CUDNN_ENABLED()
+  return CUDNN_BN_MIN_EPSILON;
+#else
+  AT_ERROR("Cannot query CUDNN_BN_MIN_EPSILON if ATen_cuda is not built with CuDNN");
+#endif
 }
 
 }}} // namespace at::cuda::detail

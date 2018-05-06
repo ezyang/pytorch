@@ -73,6 +73,22 @@ struct AT_API CUDAHooksInterface {
     AT_ERROR("cannot registerCUDATypes() without ATen_cuda library");
   }
 
+  virtual bool compiledWithCuDNN() const {
+    return false;
+  }
+
+  virtual bool supportsDilatedConvolutionWithCuDNN() const {
+    return false;
+  }
+
+  virtual long versionCuDNN() const {
+    AT_ERROR("cannot query cuDNN version without ATen_cuda library");
+  }
+
+  virtual double batchnormMinEpsilonCuDNN() const {
+    AT_ERROR("cannot query batchnormMinEpsilonCuDNN() without ATen_cuda library");
+  }
+
 };
 
 // NB: dummy argument to suppress "ISO C++11 requires at least one argument
