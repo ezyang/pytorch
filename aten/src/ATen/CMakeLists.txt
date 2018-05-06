@@ -246,6 +246,7 @@ add_library(ATen_cpu ${AT_LINK_STYLE} ${all_cpu_cpp})
 add_dependencies(ATen_cpu aten_files_are_generated)
 if(CUDA_FOUND)
   cuda_add_library(ATen_cuda ${AT_LINK_STYLE} ${all_cuda_cpp})
+  target_link_libraries(ATen_cuda ATen_cpu)
   add_dependencies(ATen_cuda cuda_aten_files_are_generated)
 endif()
 
