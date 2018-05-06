@@ -236,9 +236,6 @@ IF(NOT AT_LINK_STYLE)
 ENDIF()
 
 # Here's the game plan.
-#   - Historically, we create a shared library named libATen.so which is
-#     either CPU or CPU+CUDA, depending on if you built with NO_CUDA
-#     or not.  WE WILL CONTINUE to build this library with the same semantics.
 #   - We will have two new libraries: libATen_cpu.so and libATen_cuda.so,
 #     with libATen_cuda.so depending on libATen_cpu.so.  The CPU library
 #     contains CPU code only.  libATen_cpu.so is invariant to the setting
@@ -250,11 +247,6 @@ add_dependencies(ATen_cpu aten_files_are_generated)
 if(CUDA_FOUND)
   cuda_add_library(ATen_cuda ${AT_LINK_STYLE} ${all_cuda_cpp})
   add_dependencies(ATen_cuda cuda_aten_files_are_generated)
-endif()
-add_library(ATen ${AT_LINK_STYLE} stub/CombinedStub.cpp)
-target_link_libraries(ATen ATen_cpu)
-if(CUDA_FOUND)
-  target_link_libraries(ATen ATen_cuda)
 endif()
 
 function(aten_compile_options libname)
@@ -291,8 +283,6 @@ add_subdirectory(cpu/tbb)
 set_property(TARGET tbb_static tbb_def_files PROPERTY FOLDER "dependencies")
 target_include_directories(tbb_static PUBLIC ${TBB_ROOT_DIR}/include)
 target_link_libraries(ATen_cpu tbb_static)
-# TODO: Hmmmmmmmmmmmm
-target_link_libraries(ATen tbb_static)
 
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.1")
   set_property(TARGET ATen_cpu PROPERTY CXX_STANDARD 11)
@@ -305,8 +295,14 @@ IF(BLAS_FOUND)
   IF ($ENV{TH_BINARY_BUILD})
     MESSAGE(STATUS "TH_BINARY_BUILD detected. Enabling special linkage.")
     TARGET_LINK_LIBRARIES(ATen_cpu "${BLAS_LIBRARIES};${BLAS_LIBRARIES};${BLAS_LIBRARIES}")
+    if(CUDA_FOUND)
+      TARGET_LINK_LIBRARIES(ATen_cuda "${BLAS_LIBRARIES};${BLAS_LIBRARIES};${BLAS_LIBRARIES}")
+    endif()
   ELSE ($ENV{TH_BINARY_BUILD})
     TARGET_LINK_LIBRARIES(ATen_cpu ${BLAS_LIBRARIES})
+    if(CUDA_FOUND)
+      TARGET_LINK_LIBRARIES(ATen_cuda "${BLAS_LIBRARIES};${BLAS_LIBRARIES};${BLAS_LIBRARIES}")
+    endif()
   ENDIF ($ENV{TH_BINARY_BUILD})
 ENDIF(BLAS_FOUND)
 
@@ -479,14 +475,6 @@ if(CUDA_FOUND)
     ARCHIVE DESTINATION "${AT_INSTALL_LIB_DIR}")
 endif()
 
-install(TARGETS ATen
-  RUNTIME DESTINATION "${AT_INSTALL_BIN_DIR}"
-  LIBRARY DESTINATION "${AT_INSTALL_LIB_DIR}"
-  ARCHIVE DESTINATION "${AT_INSTALL_LIB_DIR}")
-
-get_target_property(ATEN_OUTPUT_NAME ATen LOCATION)
-get_filename_component(ATEN_OUTPUT_NAME ${ATEN_OUTPUT_NAME} NAME)
-
 get_target_property(ATEN_CPU_OUTPUT_NAME ATen_cpu LOCATION)
 get_filename_component(ATEN_CPU_OUTPUT_NAME ${ATEN_CPU_OUTPUT_NAME} NAME)
 
@@ -496,7 +484,6 @@ if(CUDA_FOUND)
 endif()
 
 set(ATEN_LIBRARIES
-  "${CMAKE_INSTALL_PREFIX}/${AT_INSTALL_LIB_DIR}/${ATEN_OUTPUT_NAME}"
   "${CMAKE_INSTALL_PREFIX}/${AT_INSTALL_LIB_DIR}/${ATEN_CPU_OUTPUT_NAME}")
 
 if(CUDA_FOUND)
