@@ -32,18 +32,26 @@ cat >ci_scripts/build_pytorch.bat <<EOL
 set PATH=C:\\Program Files\\CMake\\bin;C:\\Program Files\\7-Zip;C:\\curl-7.57.0-win64-mingw\\bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Amazon\\AWSCLI;%PATH%
 
 :: Install MKL
+aws s3 cp s3://ossci-windows/mkl_2018.2.185.7z mkl.7z --quiet && 7z x -aoa mkl.7z -omkl
 set CMAKE_INCLUDE_PATH=%cd%\\mkl\\include
 set LIB=%cd%\\mkl\\lib;%LIB
 
 :: Install MAGMA
+aws s3 cp s3://ossci-windows/magma_cuda90_release_mkl_2018.2.185.7z magma_cuda90_release_mkl_2018.2.185.7z --quiet && 7z x -aoa magma_cuda90_release_mkl_2018.2.185.7z -omagma
 set MAGMA_HOME=%cd%\\magma
 
 :: Install clcache
+aws s3 cp s3://ossci-windows/clcache.7z clcache.7z --quiet && 7z x -aoa clcache.7z -oclcache
 
 :: Install Miniconda3
+IF EXIST C:\\Jenkins\\Miniconda3 ( rd /s /q C:\\Jenkins\\Miniconda3 )
+curl https://repo.continuum.io/miniconda/Miniconda3-latest-Windows-x86_64.exe -O
+.\Miniconda3-latest-Windows-x86_64.exe /InstallationType=JustMe /RegisterPython=0 /S /AddToPath=0 /D=C:\\Jenkins\\Miniconda3
 call C:\\Jenkins\\Miniconda3\\Scripts\\activate.bat C:\\Jenkins\\Miniconda3
+call conda install -y -q numpy cffi pyyaml boto3
 
 :: Install ninja
+pip install ninja
 
 call "C:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat" x86_amd64
 
@@ -68,6 +76,13 @@ set DISTUTILS_USE_SDK=1
 
 set CMAKE_GENERATOR=Ninja
 
+set NO_CUDA=1
+
+python setup.py install
+
+if %errorlevel% neq 0 exit /b %errorlevel%
+
+rd /s /q C:\\Jenkins\\Miniconda3\\Lib\\site-packages\\torch
 
 set NO_CUDA=
 
