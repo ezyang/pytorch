@@ -311,6 +311,12 @@ ENDIF(BLAS_FOUND)
 IF(LAPACK_FOUND)
   TARGET_LINK_LIBRARIES(ATen_cpu ${LAPACK_LIBRARIES})
   if(CUDA_FOUND)
+    # Although Lapack provides CPU (and thus, one might expect that ATen_cuda
+    # would not need this at all), some of our libraries (magma in particular)
+    # backend to CPU BLAS/LAPACK implementations, and so it is very important
+    # we get the *right* implementation, because even if the symbols are the
+    # same, LAPACK implementions may have different calling conventions.
+    # This caused https://github.com/pytorch/pytorch/issues/7353
     TARGET_LINK_LIBRARIES(ATen_cuda ${LAPACK_LIBRARIES})
   endif()
 ENDIF(LAPACK_FOUND)
