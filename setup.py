@@ -568,7 +568,7 @@ library_dirs.append(lib_path)
 # we specify exact lib names to avoid conflict with lua-torch installs
 ATEN_LIBS = [os.path.join(lib_path, 'libATen_cpu.so')]
 if WITH_CUDA:
-    ATEN_LIBS.append(os.path.join(lib_path, 'libATen_cuda.so'))
+    ATEN_LIBS.extend(['-Wl,--no-as-needed', os.path.join(lib_path, 'libATen_cuda.so'), '-Wl,--as-needed'])
 THD_LIB = os.path.join(lib_path, 'libTHD.a')
 NCCL_LIB = os.path.join(lib_path, 'libnccl.so.1')
 
