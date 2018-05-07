@@ -16,7 +16,8 @@ namespace at {
   class Context;
 }
 
-namespace at { namespace detail {
+// NB: Class must live in at due to limitations of Registry.h
+namespace at {
 
 // The CUDAHooksInterface is an omnibus interface for any CUDA functionality
 // which we may want to call into from CPU code (and thus must be dynamically
@@ -98,6 +99,8 @@ struct AT_API CUDAHooksArgs {};
 AT_DECLARE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface, CUDAHooksArgs);
 #define REGISTER_CUDA_HOOKS(clsname) AT_REGISTER_CLASS(CUDAHooksRegistry, clsname, clsname)
 
-AT_API const CUDAHooksInterface& getCUDAHooks();
+namespace detail {
+  AT_API const CUDAHooksInterface& getCUDAHooks();
+}
 
-}} // namespace at::detail
+} // namespace at

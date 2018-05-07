@@ -5,6 +5,9 @@
  * register object creators during program initialization time.
  */
 
+// NB: This Registry works poorly when you have other namespaces.
+// Make all macro invocations from inside the at namespace.
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>

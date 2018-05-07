@@ -8,7 +8,9 @@ namespace at {
   class Context;
 }
 
-namespace at { namespace detail {
+// NB: Registry class not actually in the namespace detail, due to limitations
+// of Registry.h
+namespace at {
 
 // The VariableHooksInterface is an interface for autograd functionality
 // which currently doesn't live in libATen.so AND needs to be called from
@@ -33,6 +35,8 @@ struct AT_API VariableHooksArgs {};
 AT_DECLARE_REGISTRY(VariableHooksRegistry, VariableHooksInterface, VariableHooksArgs);
 #define REGISTER_VARIABLE_HOOKS(clsname) AT_REGISTER_CLASS(VariableHooksRegistry, clsname, clsname)
 
-AT_API const VariableHooksInterface& getVariableHooks();
+namespace detail {
+  AT_API const VariableHooksInterface& getVariableHooks();
+}
 
-}} // namespace at::detail
+} // namespace at

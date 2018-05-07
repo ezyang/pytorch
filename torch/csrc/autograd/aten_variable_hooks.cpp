@@ -4,14 +4,14 @@
 
 namespace torch { namespace autograd {
 
-struct VariableHooks : public at::detail::VariableHooksInterface {
-  VariableHooks(at::detail::VariableHooksArgs) {}
+struct VariableHooks : public at::VariableHooksInterface {
+  VariableHooks(at::VariableHooksArgs) {}
   void registerVariableTypeFor(at::Context*, at::Backend, at::ScalarType) const override;
 };
 
 // Sigh, the registry doesn't support namespaces :(
-using at::detail::RegistererVariableHooksRegistry;
-using at::detail::VariableHooksRegistry;
+using at::RegistererVariableHooksRegistry;
+using at::VariableHooksRegistry;
 
 REGISTER_VARIABLE_HOOKS(VariableHooks);
 

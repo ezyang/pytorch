@@ -313,7 +313,7 @@ inline Tensor& reduce_multi_associative_out(Tensor &result, const Tensor &self, 
 
 Tensor& _sum_out(Tensor &result, const Tensor &self, int64_t dim, bool keepdim) {
   if (self.is_cuda()) {
-    return _sum_out_cuda(result, self, dim, keepdim);
+    return at::_sum_cuda_out(result, self, dim, keepdim);
   }
   else {
     return _sum_out_cpu(result, self, dim, keepdim);

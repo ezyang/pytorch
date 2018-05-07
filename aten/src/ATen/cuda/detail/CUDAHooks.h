@@ -5,8 +5,8 @@
 namespace at { namespace cuda { namespace detail {
 
 // The real implementation of CUDAHooksInterface
-struct CUDAHooks : public at::detail::CUDAHooksInterface {
-  CUDAHooks(at::detail::CUDAHooksArgs) {}
+struct CUDAHooks : public at::CUDAHooksInterface {
+  CUDAHooks(at::CUDAHooksArgs) {}
   std::unique_ptr<THCState, void(*)(THCState*)> initCUDA() const override;
   std::unique_ptr<Generator> initCUDAGenerator(Context*) const override;
   bool hasCUDA() const override;
@@ -23,8 +23,8 @@ struct CUDAHooks : public at::detail::CUDAHooksInterface {
 };
 
 // Sigh, the registry doesn't support namespaces :(
-using at::detail::RegistererCUDAHooksRegistry;
-using at::detail::CUDAHooksRegistry;
+using at::RegistererCUDAHooksRegistry;
+using at::CUDAHooksRegistry;
 
 REGISTER_CUDA_HOOKS(CUDAHooks);
 

@@ -952,6 +952,11 @@
 - func: _sum_out(Tensor result, Tensor self, IntList[1] dim, bool keepdim=False) -> Tensor
   variants: function
 
+- func: _sum_cuda_out(Tensor result, Tensor self, int64_t dim, bool keepdim=False) -> Tensor
+  variants: function
+  dispatch:
+    CUDA: _sum_out_cuda
+
 - func: sqrt(Tensor self) -> Tensor
 
 - func: sqrt_(Tensor self) -> Tensor
