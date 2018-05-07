@@ -294,7 +294,7 @@ def CppExtension(name, sources, *args, **kwargs):
         kwargs['library_dirs'] = library_dirs
 
         libraries = kwargs.get('libraries', [])
-        libraries.append('ATen')
+        libraries.append('ATen_cpu')
         libraries.append('_C')
         kwargs['libraries'] = libraries
 
@@ -337,7 +337,8 @@ def CUDAExtension(name, sources, *args, **kwargs):
     libraries = kwargs.get('libraries', [])
     libraries.append('cudart')
     if sys.platform == 'win32':
-        libraries.append('ATen')
+        libraries.append('ATen_cpu')
+        libraries.append('ATen_cuda')
         libraries.append('_C')
     kwargs['libraries'] = libraries
 
