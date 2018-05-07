@@ -10,6 +10,7 @@ struct CUDAHooks : public at::CUDAHooksInterface {
   std::unique_ptr<THCState, void(*)(THCState*)> initCUDA() const override;
   std::unique_ptr<Generator> initCUDAGenerator(Context*) const override;
   bool hasCUDA() const override;
+  bool hasCuDNN() const override;
   cudaStream_t getCurrentCUDAStream(THCState*) const override;
   struct cudaDeviceProp* getCurrentDeviceProperties(THCState*) const override;
   struct cudaDeviceProp* getDeviceProperties(THCState*, int device) const override;

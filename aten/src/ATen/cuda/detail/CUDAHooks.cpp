@@ -41,6 +41,10 @@ bool CUDAHooks::hasCUDA() const {
   return true;
 }
 
+bool CUDAHooks::hasCuDNN() const {
+  return AT_CUDNN_ENABLED();
+}
+
 cudaStream_t CUDAHooks::getCurrentCUDAStream(THCState* thc_state) const {
   return THCState_getCurrentStream(thc_state);
 }

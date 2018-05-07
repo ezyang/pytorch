@@ -50,6 +50,10 @@ struct AT_API CUDAHooksInterface {
     return false;
   }
 
+  virtual bool hasCuDNN() const {
+    return false;
+  }
+
   virtual cudaStream_t getCurrentCUDAStream(THCState*) const {
     AT_ERROR("cannot getCurrentCUDAStream() without ATen_cuda library");
   }
