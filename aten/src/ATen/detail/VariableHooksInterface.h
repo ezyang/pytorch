@@ -32,7 +32,7 @@ struct AT_API VariableHooksInterface {
 // for the "..." in a variadic macro"
 struct AT_API VariableHooksArgs {};
 
-AT_DECLARE_REGISTRY(VariableHooksRegistry, VariableHooksInterface, VariableHooksArgs);
+AT_DECLARE_REGISTRY(VariableHooksRegistry, VariableHooksInterface, VariableHooksArgs)
 #define REGISTER_VARIABLE_HOOKS(clsname) AT_REGISTER_CLASS(VariableHooksRegistry, clsname, clsname)
 
 namespace detail {

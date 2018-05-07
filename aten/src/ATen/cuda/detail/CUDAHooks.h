@@ -20,6 +20,7 @@ struct CUDAHooks : public at::CUDAHooksInterface {
   bool supportsDilatedConvolutionWithCuDNN() const override;
   long versionCuDNN() const override;
   double batchnormMinEpsilonCuDNN() const override;
+  int getNumGPUs() const override;
 };
 
 // Sigh, the registry doesn't support namespaces :(

@@ -60,6 +60,9 @@ public:
   bool hasCUDA() const {
     return detail::getCUDAHooks().hasCUDA();
   }
+  bool hasCuDNN() const {
+    return detail::getCUDAHooks().hasCuDNN();
+  }
   int64_t current_device() const {
     return detail::getCUDAHooks().current_device();
   }
@@ -88,6 +91,9 @@ public:
   }
   cudaDeviceProp* getDeviceProperties(int device) const {
     return detail::getCUDAHooks().getDeviceProperties(thc_state.get(), device);
+  }
+  int getNumGPUs() const {
+    return detail::getCUDAHooks().getNumGPUs();
   }
 
   bool setFlushDenormal(bool on);
@@ -148,6 +154,10 @@ static inline Type& CUDA(ScalarType s) {
 
 static inline bool hasCUDA() {
   return globalContext().hasCUDA();
+}
+
+static inline bool hasCuDNN() {
+  return globalContext().hasCuDNN();
 }
 
 static inline bool hasMKL() {

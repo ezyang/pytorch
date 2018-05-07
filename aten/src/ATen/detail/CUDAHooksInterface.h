@@ -90,13 +90,17 @@ struct AT_API CUDAHooksInterface {
     AT_ERROR("cannot query batchnormMinEpsilonCuDNN() without ATen_cuda library");
   }
 
+  virtual int getNumGPUs() const {
+    return 0;
+  }
+
 };
 
 // NB: dummy argument to suppress "ISO C++11 requires at least one argument
 // for the "..." in a variadic macro"
 struct AT_API CUDAHooksArgs {};
 
-AT_DECLARE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface, CUDAHooksArgs);
+AT_DECLARE_REGISTRY(CUDAHooksRegistry, CUDAHooksInterface, CUDAHooksArgs)
 #define REGISTER_CUDA_HOOKS(clsname) AT_REGISTER_CLASS(CUDAHooksRegistry, clsname, clsname)
 
 namespace detail {

@@ -99,4 +99,15 @@ double CUDAHooks::batchnormMinEpsilonCuDNN() const {
 #endif
 }
 
+int CUDAHooks::getNumGPUs() const {
+  int count;
+  auto err = cudaGetDeviceCount(&count);
+  if (err == cudaErrorNoDevice) {
+    return 0;
+  } else if (err != cudaSuccess) {
+    AT_ERROR("CUDA error (", static_cast<int>(err), "): ", cudaGetErrorString(err));
+  }
+  return count;
+}
+
 }}} // namespace at::cuda::detail

@@ -46,6 +46,11 @@ CUDAGenerator& CUDAGenerator::manualSeed(uint64_t seed) {
   return *this;
 }
 
+CUDAGenerator& CUDAGenerator::manualSeedAll(uint64_t seed) {
+  THCRandom_manualSeedAll(context->getTHCState(), seed);
+  return *this;
+}
+
 void * CUDAGenerator::unsafeGetTH() {
   return (void *) generator;
 }
