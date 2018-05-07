@@ -566,7 +566,9 @@ include_dirs += [
 library_dirs.append(lib_path)
 
 # we specify exact lib names to avoid conflict with lua-torch installs
-ATEN_LIBS = [os.path.join(lib_path, 'libATen.so')]
+ATEN_LIBS = [os.path.join(lib_path, 'libATen_cpu.so')]
+if WITH_CUDA:
+    ATEN_LIBS.append(os.path.join(lib_path, 'libATen_cuda.so'))
 THD_LIB = os.path.join(lib_path, 'libTHD.a')
 NCCL_LIB = os.path.join(lib_path, 'libnccl.so.1')
 
@@ -574,7 +576,9 @@ NCCL_LIB = os.path.join(lib_path, 'libnccl.so.1')
 NANOPB_STATIC_LIB = os.path.join(lib_path, 'libprotobuf-nanopb.a')
 
 if IS_DARWIN:
-    ATEN_LIBS = [os.path.join(lib_path, 'libATen.dylib')]
+    ATEN_LIBS = [os.path.join(lib_path, 'libATen_cuda.dylib')]
+    if WITH_CUDA:
+        ATEN_LIBS.append(os.path.join(lib_path, 'libATen_cuda.dylib'))
     NCCL_LIB = os.path.join(lib_path, 'libnccl.1.dylib')
 
 if IS_WINDOWS:
