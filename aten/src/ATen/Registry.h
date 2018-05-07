@@ -154,7 +154,7 @@ class AT_API Registerer {
   AT_API Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>* RegistryName(); \
   typedef Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>        \
       Registerer##RegistryName; \
-  template class Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>;
+  extern template class Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>;
 
 #define AT_DEFINE_TYPED_REGISTRY(                                         \
     RegistryName, SrcType, ObjectType, PtrType, ...)                         \
@@ -162,19 +162,20 @@ class AT_API Registerer {
     static Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>* registry = \
         new Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>();         \
     return registry;                                                         \
-  }
+  } \
+  template class Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>;
 
 // Note(Yangqing): The __VA_ARGS__ below allows one to specify a templated
 // creator with comma in its templated arguments.
 #define AT_REGISTER_TYPED_CREATOR(RegistryName, key, ...)                  \
   namespace {                                                                 \
-  AT_API Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
+  Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
       key, RegistryName(), __VA_ARGS__);                                      \
   }
 
 #define AT_REGISTER_TYPED_CLASS(RegistryName, key, ...)                    \
   namespace {                                                                 \
-  AT_API Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
+  Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
       key,                                                                    \
       RegistryName(),                                                         \
       Registerer##RegistryName::DefaultCreator<__VA_ARGS__>,                  \

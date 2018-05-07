@@ -578,7 +578,9 @@ if IS_DARWIN:
     NCCL_LIB = os.path.join(lib_path, 'libnccl.1.dylib')
 
 if IS_WINDOWS:
-    ATEN_LIBS = [os.path.join(lib_path, 'ATen_cpu.lib'), os.path.join(lib_path, 'ATen_cuda.lib')]
+    ATEN_LIBS = [os.path.join(lib_path, 'ATen_cpu.lib')]
+    if WITH_CUDA:
+        ATEN_LIBS.append(os.path.join(lib_path, 'ATen_cuda.lib'))
     if DEBUG:
         NANOPB_STATIC_LIB = os.path.join(lib_path, 'protobuf-nanopbd.lib')
     else:
