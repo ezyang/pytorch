@@ -906,7 +906,7 @@
   variants: function
   dispatch:
     CPU: _sspaddmm_out_only_sparse
-    CUDA: _sspaddmm_out_only_sparse
+    CUDA: _sspaddmm_out_only_sparse_cuda
     SparseCPU: _sspaddmm_out_cpu
     SparseCUDA: _sspaddmm_out_cuda
 
