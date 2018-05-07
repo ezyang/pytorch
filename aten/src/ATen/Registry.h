@@ -153,7 +153,8 @@ class AT_API Registerer {
     RegistryName, SrcType, ObjectType, PtrType, ...)                     \
   AT_API Registry<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>* RegistryName(); \
   typedef Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>        \
-      Registerer##RegistryName;
+      Registerer##RegistryName; \
+  template class Registerer<SrcType, PtrType<ObjectType>, ##__VA_ARGS__>;
 
 #define AT_DEFINE_TYPED_REGISTRY(                                         \
     RegistryName, SrcType, ObjectType, PtrType, ...)                         \
