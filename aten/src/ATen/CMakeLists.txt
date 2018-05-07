@@ -236,12 +236,11 @@ IF(NOT AT_LINK_STYLE)
   SET(AT_LINK_STYLE SHARED)
 ENDIF()
 
-# Here's the game plan.
-#   - We will have two new libraries: libATen_cpu.so and libATen_cuda.so,
-#     with libATen_cuda.so depending on libATen_cpu.so.  The CPU library
-#     contains CPU code only.  libATen_cpu.so is invariant to the setting
-#     of NO_CUDA (it always builds the same way); libATen_cuda.so is only
-#     built when NO_CUDA=0 and CUDA is available.
+# We have two libraries: libATen_cpu.so and libATen_cuda.so,
+# with libATen_cuda.so depending on libATen_cpu.so.  The CPU library
+# contains CPU code only.  libATen_cpu.so is invariant to the setting
+# of NO_CUDA (it always builds the same way); libATen_cuda.so is only
+# built when NO_CUDA=0 and CUDA is available.
 
 add_library(ATen_cpu ${AT_LINK_STYLE} ${all_cpu_cpp})
 add_dependencies(ATen_cpu aten_files_are_generated)
@@ -249,6 +248,7 @@ if(CUDA_FOUND)
   cuda_add_library(ATen_cuda ${AT_LINK_STYLE} ${all_cuda_cpp})
   target_link_libraries(ATen_cuda ATen_cpu)
   add_dependencies(ATen_cuda cuda_aten_files_are_generated)
+  caffe2_interface_library(ATen_cuda ATen_cuda_library)
 endif()
 
 function(aten_compile_options libname)

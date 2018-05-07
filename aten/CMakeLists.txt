@@ -13,11 +13,15 @@ project(ATen CXX C)
 list(APPEND CMAKE_MODULE_PATH
   /usr/lib/x86_64-linux-gnu/
   ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/Modules
+  ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/public
   ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/Modules_CUDA_fix)
 list(APPEND CMAKE_LIBRARY_PATH /usr/lib/x86_64-linux-gnu/)
 
 
 cmake_policy(SET CMP0012 NEW)
+
+# For caffe2_interface_library
+include(utils)
 
 # Polyfill for upstream FindCUDA
 include(CMakeInitializeConfigs)

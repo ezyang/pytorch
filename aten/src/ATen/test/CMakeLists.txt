@@ -45,15 +45,15 @@ target_link_libraries(tbb_init_test ATen_cpu)
 
 if(NOT NO_CUDA)
   cuda_add_executable(integer_divider_test integer_divider_test.cu)
-  target_link_libraries(integer_divider_test ATen_cpu ATen_cuda)
+  target_link_libraries(integer_divider_test ATen_cpu ATen_cuda_library)
 endif()
 
 if(NOT NO_CUDA)
   cuda_add_executable(cuda_rng_test cuda_rng_test.cpp)
-  target_link_libraries(cuda_rng_test ATen_cpu ATen_cuda)
+  target_link_libraries(cuda_rng_test ATen_cpu ATen_cuda_library)
 endif()
 
 if (CUDNN_FOUND)
   add_executable(cudnn_test cudnn_test.cpp)
-  target_link_libraries(cudnn_test ATen_cpu ATen_cuda)
+  target_link_libraries(cudnn_test ATen_cpu ATen_cuda_library)
 endif()
