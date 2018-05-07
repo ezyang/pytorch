@@ -668,7 +668,9 @@ def _prepare_ldflags(extra_ldflags, with_cuda, verbose):
         torch_path = os.path.dirname(os.path.dirname(here))
         lib_path = os.path.join(torch_path, 'lib')
 
-        extra_ldflags.append('ATen.lib')
+        extra_ldflags.append('ATen_cpu.lib')
+        if with_cuda:
+            extra_ldflags.append('ATen_cuda.lib')
         extra_ldflags.append('_C.lib')
         extra_ldflags.append('/LIBPATH:{}'.format(python_lib_path))
         extra_ldflags.append('/LIBPATH:{}'.format(lib_path))
