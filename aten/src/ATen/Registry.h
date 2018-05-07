@@ -111,7 +111,7 @@ class AT_API Registry {
 };
 
 template <class SrcType, class ObjectPtrType, class... Args>
-class Registerer {
+class AT_API Registerer {
  public:
   Registerer(
       const SrcType& key,
@@ -167,13 +167,13 @@ class Registerer {
 // creator with comma in its templated arguments.
 #define AT_REGISTER_TYPED_CREATOR(RegistryName, key, ...)                  \
   namespace {                                                                 \
-  static Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
+  AT_API Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
       key, RegistryName(), __VA_ARGS__);                                      \
   }
 
 #define AT_REGISTER_TYPED_CLASS(RegistryName, key, ...)                    \
   namespace {                                                                 \
-  static Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
+  AT_API Registerer##RegistryName AT_ANONYMOUS_VARIABLE(g_##RegistryName)( \
       key,                                                                    \
       RegistryName(),                                                         \
       Registerer##RegistryName::DefaultCreator<__VA_ARGS__>,                  \
