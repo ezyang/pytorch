@@ -576,7 +576,7 @@ NCCL_LIB = os.path.join(lib_path, 'libnccl.so.1')
 NANOPB_STATIC_LIB = os.path.join(lib_path, 'libprotobuf-nanopb.a')
 
 if IS_DARWIN:
-    ATEN_LIBS = [os.path.join(lib_path, 'libATen_cuda.dylib')]
+    ATEN_LIBS = [os.path.join(lib_path, 'libATen_cpu.dylib')]
     if WITH_CUDA:
         ATEN_LIBS.append(os.path.join(lib_path, 'libATen_cuda.dylib'))
     NCCL_LIB = os.path.join(lib_path, 'libnccl.1.dylib')
