@@ -244,7 +244,7 @@ ENDIF()
 
 add_library(ATen_cpu ${AT_LINK_STYLE} ${all_cpu_cpp})
 add_dependencies(ATen_cpu aten_files_are_generated)
-if(CUDA_FOUND)
+if(NOT NO_CUDA)
   cuda_add_library(ATen_cuda ${AT_LINK_STYLE} ${all_cuda_cpp})
   target_link_libraries(ATen_cuda ATen_cpu)
   add_dependencies(ATen_cuda cuda_aten_files_are_generated)
@@ -270,7 +270,7 @@ endfunction()
 
 if(NOT MSVC)
   aten_compile_options(ATen_cpu)
-  if(CUDA_FOUND)
+  if(NOT NO_CUDA)
     aten_compile_options(ATen_cuda)
   endif()
 endif()
@@ -288,7 +288,7 @@ target_link_libraries(ATen_cpu tbb_static)
 
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.1")
   set_property(TARGET ATen_cpu PROPERTY CXX_STANDARD 11)
-  if(CUDA_FOUND)
+  if(NOT NO_CUDA)
     set_property(TARGET ATen_cuda PROPERTY CXX_STANDARD 11)
   endif()
 endif()
@@ -297,12 +297,12 @@ IF(BLAS_FOUND)
   IF ($ENV{TH_BINARY_BUILD})
     MESSAGE(STATUS "TH_BINARY_BUILD detected. Enabling special linkage.")
     TARGET_LINK_LIBRARIES(ATen_cpu "${BLAS_LIBRARIES};${BLAS_LIBRARIES};${BLAS_LIBRARIES}")
-    if(CUDA_FOUND)
+    if(NOT NO_CUDA)
       TARGET_LINK_LIBRARIES(ATen_cuda "${BLAS_LIBRARIES};${BLAS_LIBRARIES};${BLAS_LIBRARIES}")
     endif()
   ELSE ($ENV{TH_BINARY_BUILD})
     TARGET_LINK_LIBRARIES(ATen_cpu ${BLAS_LIBRARIES})
-    if(CUDA_FOUND)
+    if(NOT NO_CUDA)
       TARGET_LINK_LIBRARIES(ATen_cuda "${BLAS_LIBRARIES}")
     endif()
   ENDIF ($ENV{TH_BINARY_BUILD})
@@ -310,7 +310,7 @@ ENDIF(BLAS_FOUND)
 
 IF(LAPACK_FOUND)
   TARGET_LINK_LIBRARIES(ATen_cpu ${LAPACK_LIBRARIES})
-  if(CUDA_FOUND)
+  if(NOT NO_CUDA)
     # Although Lapack provides CPU (and thus, one might expect that ATen_cuda
     # would not need this at all), some of our libraries (magma in particular)
     # backend to CPU BLAS/LAPACK implementations, and so it is very important
@@ -360,7 +360,7 @@ ELSE(NOT MSVC)
     set_target_properties(ATen_cpu PROPERTIES LINK_FLAGS_RELEASE "/NODEFAULTLIB:${VCOMP_LIB}")
     set_target_properties(ATen_cpu PROPERTIES LINK_FLAGS_DEBUG "/NODEFAULTLIB:${VCOMP_LIB}")
     set_target_properties(ATen_cpu PROPERTIES STATIC_LIBRARY_FLAGS "/NODEFAULTLIB:${VCOMP_LIB}")
-    if(CUDA_FOUND)
+    if(NOT NO_CUDA)
       set_target_properties(ATen_cuda PROPERTIES LINK_FLAGS_RELEASE "/NODEFAULTLIB:${VCOMP_LIB}")
       set_target_properties(ATen_cuda PROPERTIES LINK_FLAGS_DEBUG "/NODEFAULTLIB:${VCOMP_LIB}")
       set_target_properties(ATen_cuda PROPERTIES STATIC_LIBRARY_FLAGS "/NODEFAULTLIB:${VCOMP_LIB}")
@@ -413,7 +413,7 @@ if (NOT TARGET cpuinfo)
 endif()
 TARGET_LINK_LIBRARIES(ATen_cpu cpuinfo)
 
-IF(CUDA_FOUND)
+IF(NOT NO_CUDA)
   IF ($ENV{ATEN_STATIC_CUDA})
     # CuFFT has a complicated static story (especially around CUDA < 9) because it has device callback support
     # we first have to build a fake lib that links with no device callbacks,
@@ -484,7 +484,7 @@ install(TARGETS ATen_cpu
   LIBRARY DESTINATION "${AT_INSTALL_LIB_DIR}"
   ARCHIVE DESTINATION "${AT_INSTALL_LIB_DIR}")
 
-if(CUDA_FOUND)
+if(NOT NO_CUDA)
   install(TARGETS ATen_cuda
     RUNTIME DESTINATION "${AT_INSTALL_BIN_DIR}"
     LIBRARY DESTINATION "${AT_INSTALL_LIB_DIR}"
@@ -494,7 +494,7 @@ endif()
 get_target_property(ATEN_CPU_OUTPUT_NAME ATen_cpu LOCATION)
 get_filename_component(ATEN_CPU_OUTPUT_NAME ${ATEN_CPU_OUTPUT_NAME} NAME)
 
-if(CUDA_FOUND)
+if(NOT NO_CUDA)
   get_target_property(ATEN_CUDA_OUTPUT_NAME ATen_cuda LOCATION)
   get_filename_component(ATEN_CUDA_OUTPUT_NAME ${ATEN_CUDA_OUTPUT_NAME} NAME)
 endif()
@@ -502,7 +502,7 @@ endif()
 set(ATEN_LIBRARIES
   "${CMAKE_INSTALL_PREFIX}/${AT_INSTALL_LIB_DIR}/${ATEN_CPU_OUTPUT_NAME}")
 
-if(CUDA_FOUND)
+if(NOT NO_CUDA)
   set(ATEN_LIBRARIES
     ${ATEN_LIBRARIES}
     "${CMAKE_INSTALL_PREFIX}/${AT_INSTALL_LIB_DIR}/${ATEN_CUDA_OUTPUT_NAME}")
