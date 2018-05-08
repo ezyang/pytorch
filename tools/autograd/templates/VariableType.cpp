@@ -275,11 +275,9 @@ static Tensor as_variable(Tensor tensor) {
 }
 
 static std::vector<Tensor> as_variable(TensorList tl) {
-  std::vector<Tensor> variables;
-  for (auto& t : tl) {
-    variables.emplace_back(make_variable(std::move(t), /*requires_grad=*/false));
-  }
-  return variables;
+  return fmap(tl, [](const Tensor&) -> Tensor {
+      return make_variable(std::move(t), /*requires_grad=*/false);
+  });
 }
 
 template <typename... Tensors, size_t... Is>
