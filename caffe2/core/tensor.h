@@ -116,8 +116,8 @@ class Tensor {
    * function exists that will create an implicit context object for copy, but
    * be noted that this will cause a potential performance hit.
    */
-  template <class SrcContext, class ContextForCopy>
-  Tensor(const Tensor<SrcContext>& src, ContextForCopy* context) {
+  template <class SrcContext>
+  Tensor(const Tensor<SrcContext>& src, BaseContext* context) {
     CopyFrom(src, context);
   }
 
@@ -141,11 +141,12 @@ class Tensor {
    * @brief Creates a tensor, and fills its contents with the given values.
    */
   template <typename T>
-  Tensor(const vector<TIndex>& dims, const vector<T>& values, Context* context)
+  Tensor(const vector<TIndex>& dims, const vector<T>& values, BaseContext* context)
       : meta_(TypeMeta::Make<T>()) {
     Resize(dims);
     CAFFE_ENFORCE_EQ_WITH_CALLER(values.size(), size_);
-    context->template Copy<T, CPUContext, Context>(size_, values.data(), mutable_data<T>());
+    // TODO: virtualize this (with a double dispatch, fix the type above yo yo yo)
+    context->CopyFromCPU(size_, values.data(), mutable_data<T>());
   }
 
   /**
@@ -153,17 +154,18 @@ class Tensor {
    */
   template <typename T,
             typename = typename std::enable_if<std::is_scalar<T>::value>::type>
-  Tensor(const T& value, Context* context) {
+  Tensor(const T& value, BaseContext* context) {
     Resize(vector<TIndex>{});
-    context->template Copy<T, CPUContext, Context>(size_, &value, mutable_data<T>());
+    // TODO: virtualize this (with a double dispatch, fix the type above yo yo yo)
+    context->CopyFromCPU(size_, &value, mutable_data<T>());
   }
 
   /**
    * @brief Copies the data from a source tensor, with a contex provided to
    * carry out the underlying memcpy operation.
    */
-  template <class SrcContext, class ContextForCopy>
-  void CopyFrom(const Tensor<SrcContext>& src, ContextForCopy* context) {
+  template <class SrcContext>
+  void CopyFrom(const Tensor<SrcContext>& src, BaseContext* context) {
     if ((void*)&src == (void*)this) {
       return;
     }
@@ -171,10 +173,10 @@ class Tensor {
     Resize(src.dims());
     if (size() > 0) {
       if (meta_.copy()) {
+        // TODO: Missing an ENFORCE that source and dest are CPU
         meta_.copy()(src.raw_data(), raw_mutable_data(), size());
       } else {
-        context->template CopyBytes<SrcContext, Context>(
-            nbytes(), src.raw_data(), raw_mutable_data());
+        SrcContext::CopyBytesFromContext(nbytes(), src.raw_data(), raw_mutable_data(), context);
       }
     }
   }
@@ -203,8 +205,7 @@ class Tensor {
    * growthPct. This ensures that Extend runs on an amortized O(1) time
    * complexity.
    */
-  template <class ContextForCopy>
-  void Extend(TIndex num, float growthPct, ContextForCopy* context) {
+  void Extend(TIndex num, float growthPct, BaseContext* context) {
     CAFFE_ENFORCE_GE_WITH_CALLER(dims_.size(), 1);
     auto newDims = dims_;
     newDims[0] += num;
@@ -230,8 +231,8 @@ class Tensor {
     size_ = newSize;
   }
 
-  template <class T, class ContextForCopy>
-  void Reserve(const std::vector<T>& newCapacity, ContextForCopy* context) {
+  template <class T>
+  void Reserve(const std::vector<T>& newCapacity, BaseContext* context) {
     auto newSize = std::accumulate(
         newCapacity.begin(),
         newCapacity.end(),
@@ -245,7 +246,7 @@ class Tensor {
     auto oldDims = dims_;
     Resize(newCapacity);
     auto* newData = raw_mutable_data(meta_);
-    context->template CopyItems<ContextForCopy, ContextForCopy>(
+    context->CopyItemsSameDevice(
         meta_, oldSize, oldData.get(), newData);
     dims_ = oldDims;
     size_ = oldSize;
@@ -684,7 +685,6 @@ class Tensor {
   bool shares_data_ = false;
   size_t capacity_ = 0;
   bool reserved_ = false;
-  // In case of chunk load we store how much data was already loaded
 
  private:
   template <

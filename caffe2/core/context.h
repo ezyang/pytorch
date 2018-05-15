@@ -11,6 +11,7 @@
 #include "caffe2/core/logging.h"
 #include "caffe2/core/typeid.h"
 #include "caffe2/proto/caffe2.pb.h"
+#include "caffe2/core/context_base.h"
 
 CAFFE2_DECLARE_bool(caffe2_report_cpu_memory_usage);
 
@@ -63,7 +64,7 @@ uint32_t RandomNumberSeed();
  * compile time using templates rather than via polymorphism. You should also
  * not have classes derived from existing context classes.
  */
-class CPUContext final {
+class CPUContext final : public BaseContext {
  public:
   typedef std::mt19937 rand_gen_type;
   CPUContext() : random_seed_(RandomNumberSeed()) {}
@@ -74,23 +75,22 @@ class CPUContext final {
     CAFFE_ENFORCE_EQ(option.device_type(), CPU);
   }
 
-  ~CPUContext() noexcept {}
+  ~CPUContext() noexcept override {}
 
-  inline void SwitchToDevice(int /*stream_id*/) {}
-  inline void SwitchToDevice() {
-    SwitchToDevice(0);
-  }
+  inline void SwitchToDevice(int /*stream_id*/) override {}
 
-  inline void WaitEvent(const Event& ev) {
+  using BaseContext::SwitchToDevice;
+
+  inline void WaitEvent(const Event& ev) override {
     ev.Wait(CPU, this);
   }
 
-  inline void Record(Event* ev, const char* err_msg = nullptr) const {
+  inline void Record(Event* ev, const char* err_msg = nullptr) const override {
     CAFFE_ENFORCE(ev, "Event must not be null.");
     ev->Record(CPU, this, err_msg);
   }
 
-  inline void FinishDeviceComputation() {}
+  inline void FinishDeviceComputation() override {}
 
   inline rand_gen_type& RandGenerator() {
     if (!random_generator_.get()) {
@@ -111,6 +111,25 @@ class CPUContext final {
   // Two copy functions that deals with cross-device copies.
   template <class SrcContext, class DstContext>
   inline void CopyBytes(size_t nbytes, const void* src, void* dst);
+
+  inline void CopyBytesSameDevice(size_t nbytes, const void* src, void* dst) override {
+    if (nbytes == 0) {
+      return;
+    }
+    CAFFE_ENFORCE(src);
+    CAFFE_ENFORCE(dst);
+    memcpy(dst, src, nbytes);
+  }
+  inline void CopyBytesFromCPU(size_t nbytes, const void* src, void* dst) override {
+    CopyBytesSameDevice(nbytes, src, dst);
+  }
+  inline void CopyBytesToCPU(size_t nbytes, const void* src, void* dst) override {
+    CopyBytesSameDevice(nbytes, src, dst);
+  }
+
+  static inline void CopyBytesFromContext(size_t nbytes, const void* src, void* dst, BaseContext* context) {
+    context->CopyBytesToCPU(nbytes, src, dst);
+  }
 
   template <typename T, class SrcContext, class DstContext>
   inline void Copy(size_t n, const T* src, T* dst) {
@@ -134,6 +153,10 @@ class CPUContext final {
     } else {
       CopyBytes<SrcContext, DstContext>(n * meta.itemsize(), src, dst);
     }
+  }
+
+  void EnforceMetaCopyOK() {
+    // CPU meta copy is OK
   }
 
   // By default CPU operators don't have async device parts

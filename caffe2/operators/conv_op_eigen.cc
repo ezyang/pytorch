@@ -4,10 +4,6 @@
 
 #include "Eigen/Core"
 
-#if !EIGEN_VERSION_AT_LEAST(3, 3, 0)
-#error "Caffe2 requires Eigen to be at least 3.3.0.";
-#endif
-
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace caffe2 {

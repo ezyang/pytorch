@@ -13,6 +13,8 @@
 #include "caffe2/core/types.h"
 #include "caffe2/proto/caffe2.pb.h"
 
+#include "caffe2/core/context_base.h"
+
 namespace caffe2 {
 
 enum class CudaMemoryPoolType {
@@ -119,37 +121,36 @@ class ThreadLocalCUDAObjects {
   vector<cudnnHandle_t> cudnn_handles_[CAFFE2_COMPILE_TIME_MAX_GPUS];
 };
 
-class CUDAContext final {
+class CUDAContext final : public BaseContext {
  public:
   // The default cuda context constructor.
   explicit CUDAContext(const int gpu_id = -1);
   explicit CUDAContext(const DeviceOption& option);
 
-  ~CUDAContext() {
+  ~CUDAContext() override {
     if (curand_generator_) {
       CURAND_CHECK(curandDestroyGenerator(curand_generator_));
     }
     FinishDeviceComputation();
   }
 
-  inline void SwitchToDevice(int stream_id) {
+  inline void SwitchToDevice(int stream_id) override {
     set_stream_id(stream_id);
     CaffeCudaSetDevice(gpu_id_);
   }
-  inline void SwitchToDevice() {
-    SwitchToDevice(0);
-  }
 
-  inline void WaitEvent(const Event& ev) {
+  using BaseContext::SwitchToDevice;
+
+  inline void WaitEvent(const Event& ev) override {
     ev.Wait(CUDA, this);
   }
 
-  inline void Record(Event* ev, const char* err_msg = nullptr) const {
+  inline void Record(Event* ev, const char* err_msg = nullptr) const override {
     CAFFE_ENFORCE(ev, "Event must not be null.");
     ev->Record(CUDA, this, err_msg);
   }
 
-  void FinishDeviceComputation() {
+  void FinishDeviceComputation() override {
     cudaStreamSynchronize(cuda_objects_.GetStream(gpu_id_, stream_id_));
     cudaError_t error = cudaGetLastError();
     if (error != cudaSuccess) {
@@ -214,6 +215,29 @@ class CUDAContext final {
         nbytes,
         cudaMemcpyDefault,
         cuda_objects_.GetStream(gpu_id_, stream_id_)));
+  }
+
+  static void CopyBytesFromContext(size_t nbytes, const void* src, void* dst, BaseContext* context) {
+    // TODO: dynamic_cast is SLOOOOOOW.  Replace with a virtual dispatch
+    if (auto c = dynamic_cast<CUDAContext*>(context)) {
+      c->CopyBytesSameDevice(nbytes, src, dst);
+    } else if (auto c = dynamic_cast<CPUContext*>(context)) {
+      c->CopyBytesFromCPU(nbytes, src, dst);
+    } else {
+      CAFFE_THROW("illegal FromContext in CUDAContext::CopyBytesFromContext");
+    }
+  }
+
+  inline void CopyBytesSameDevice(size_t nbytes, const void* src, void* dst) override {
+    CopyBytes<CUDAContext, CUDAContext>(nbytes, src, dst);
+  }
+
+  inline void CopyBytesToCPU(size_t nbytes, const void* src, void* dst) override {
+    CopyBytes<CUDAContext, CPUContext>(nbytes, src, dst);
+  }
+
+  inline void CopyBytesFromCPU(size_t nbytes, const void* src, void* dst) override {
+    CopyBytes<CPUContext, CUDAContext>(nbytes, src, dst);
   }
 
   template <typename T, class SrcContext, class DstContext>

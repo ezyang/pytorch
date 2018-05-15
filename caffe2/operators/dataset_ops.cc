@@ -967,11 +967,13 @@ class CollectTensorOp final : public Operator<Context> {
       } else if (pos >= tensorVector->size()) {
         // append
         tensorVector->push_back(Tensor<Context>());
-        tensorVector->back().template CopyFrom<Context, Context>(
+        // TODO: Same device copy, could optimize
+        tensorVector->back().template CopyFrom<Context>(
             tensor, &context_);
       } else {
         // replace
-        tensorVector->at(pos).template CopyFrom<Context, Context>(
+        // TODO: Same device copy, could optimize
+        tensorVector->at(pos).template CopyFrom<Context>(
             tensor, &context_);
       }
     }
