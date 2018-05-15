@@ -85,7 +85,7 @@ class BaseContext {
   template <typename T>
   inline void CopyFromCPU(size_t n, const T* src, T* dst) {
     if (std::is_fundamental<T>::value) {
-      CopyFromCPU(
+      CopyBytesFromCPU(
           n * sizeof(T),
           static_cast<const void*>(src),
           static_cast<void*>(dst));
@@ -100,7 +100,7 @@ class BaseContext {
   template <typename T>
   inline void CopyToCPU(size_t n, const T* src, T* dst) {
     if (std::is_fundamental<T>::value) {
-      CopyToCPU(
+      CopyBytesToCPU(
           n * sizeof(T),
           static_cast<const void*>(src),
           static_cast<void*>(dst));
