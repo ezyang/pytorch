@@ -65,6 +65,38 @@ static void BM_cudaSetDevice(benchmark::State& state) {
 }
 BENCHMARK(BM_cudaSetDevice);
 
+BaseContext* _makeCUDAContext() {
+  static CUDAContext context;
+  return &context;
+}
+// Some fancy footwork to prevent the compiler from devirtualizing us.
+// If we call the function directly, the compiler can infer that BaseContext*
+// is actually a CUDAContext* and devirtualize. But we're trying to
+// measure virtual call overhead.
+BaseContext* (*makeCUDAContext)() = _makeCUDAContext;
+
+static void BM_CUDAContextSwitchToDevice(benchmark::State& state) {
+  CAFFE2_SKIP_IF_NO_GPU;
+  int total = NumCudaDevices();
+  int i = 0;
+  BaseContext *context = makeCUDAContext();
+  while (state.KeepRunning()) {
+    context->SwitchToDevice(i++ % total);
+  }
+}
+BENCHMARK(BM_CUDAContextSwitchToDevice);
+
+static void BM_CUDAContextSwitchToDeviceNonVirtual(benchmark::State& state) {
+  CAFFE2_SKIP_IF_NO_GPU;
+  int total = NumCudaDevices();
+  int i = 0;
+  CUDAContext context;
+  while (state.KeepRunning()) {
+    context.SwitchToDevice(i++ % total);
+  }
+}
+BENCHMARK(BM_CUDAContextSwitchToDeviceNonVirtual);
+
 static void BM_cudaSetAndGetDevice(benchmark::State& state) {
   CAFFE2_SKIP_IF_NO_GPU;
   int total = NumCudaDevices();
