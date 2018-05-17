@@ -3511,12 +3511,12 @@ namespace consthash {
 
 struct Ten;
 
-Ten plus_f(const Ten& a, const Ten& b);
-Ten mul_f(const Ten& a, const Ten& b);
-Ten sigmoid_f(const Ten& a);
-Ten tanh_f(const Ten& a);
-Ten mm_f(const Ten& a, const Ten& b);
-std::vector<Ten> chunk4_f(const Ten& a);
+Ten plus_f(ArrayRef<Ten>);
+Ten mul_f(ArrayRef<Ten>);
+Ten sigmoid_f(ArrayRef<Ten>);
+Ten tanh_f(ArrayRef<Ten>);
+Ten mm_f(ArrayRef<Ten>);
+std::vector<Ten> chunk4_f(ArrayRef<Ten>);
 Ten load(const at::Tensor& a);
 at::Tensor save(const Ten& a);
 
@@ -3649,23 +3649,24 @@ struct Ten {
   }
   #define LOOKUP(fn, ...) ((decltype(&fn))(dispatch_table[HashKey(__VA_ARGS__)]))
   Ten operator+(const Ten& b) const {
-    return LOOKUP(plus_f, ADD, key(), b.key())(*this, b);
+    return LOOKUP(plus_f, ADD, key(), b.key())({*this, b});
   }
   Ten operator*(const Ten& b) const {
-    return LOOKUP(mul_f, MUL, key(), b.key())(*this, b);
+    return LOOKUP(mul_f, MUL, key(), b.key())({*this, b});
   }
   Ten mm(const Ten& b) const {
-    return LOOKUP(mm_f, MM, key(), b.key())(*this, b);
+    return LOOKUP(mm_f, MM, key(), b.key())({*this, b});
   }
   Ten sigmoid() const {
-    return LOOKUP(sigmoid_f, SIGMOID, key())(*this);
+    return LOOKUP(sigmoid_f, SIGMOID, key())({*this});
   }
   Ten tanh() const {
-    return LOOKUP(tanh_f, TANH, key())(*this);
+    return LOOKUP(tanh_f, TANH, key())({*this});
   }
   std::vector<Ten> chunk4() {
-    return LOOKUP(chunk4_f, CHUNK, key())(*this);
+    return LOOKUP(chunk4_f, CHUNK, key())({*this});
   }
+  #undef LOOKUP
   at::ArrayRef<int64_t> sizes() const {
     return ArrayRef<int64_t>(pImpl->sizes, 2);
   }
@@ -3682,7 +3683,9 @@ Ten create(at::ArrayRef<int64_t> sizes) {
   return r;
 }
 
-Ten plus_f(const Ten& a, const Ten& b) {
+Ten plus_f(at::ArrayRef<Ten> v) {
+  auto a = v[0];
+  auto b = v[1];
   JIT_ASSERT(a.sizes().equals(b.sizes()));
   auto c = create(a.sizes());
   auto sizes = a.sizes();
@@ -3696,7 +3699,9 @@ Ten plus_f(const Ten& a, const Ten& b) {
   return c;
 }
 
-Ten mul_f(const Ten& a, const Ten& b) {
+Ten mul_f(at::ArrayRef<Ten> v) {
+  auto a = v[0];
+  auto b = v[1];
   JIT_ASSERT(a.sizes().equals(b.sizes()));
   auto c = create(a.sizes());
   auto sizes = a.sizes();
@@ -3710,7 +3715,8 @@ Ten mul_f(const Ten& a, const Ten& b) {
   return c;
 }
 
-Ten sigmoid_f(const Ten& a) {
+Ten sigmoid_f(at::ArrayRef<Ten> v) {
+  auto a = v[0];
   auto c = create(a.sizes());
   auto sizes = a.sizes();
   auto a_data = a.data();
@@ -3722,7 +3728,8 @@ Ten sigmoid_f(const Ten& a) {
   return c;
 }
 
-Ten tanh_f(const Ten& a) {
+Ten tanh_f(at::ArrayRef<Ten> v) {
+  auto a = v[0];
   auto c = create(a.sizes());
   auto sizes = a.sizes();
   auto a_data = a.data();
@@ -3734,7 +3741,9 @@ Ten tanh_f(const Ten& a) {
   return c;
 }
 
-Ten mm_f(const Ten& a, const Ten& b) {
+Ten mm_f(at::ArrayRef<Ten> v) {
+  auto a = v[0];
+  auto b = v[1];
   auto M = a.sizes()[0];
   auto K = a.sizes()[1];
   JIT_ASSERT(K == b.sizes()[0]);
@@ -3756,7 +3765,8 @@ Ten mm_f(const Ten& a, const Ten& b) {
   return c;
 }
 
-std::vector<Ten> chunk4_f(const Ten& a) {
+std::vector<Ten> chunk4_f(ArrayRef<Ten> v) {
+  auto a = v[0];
   JIT_ASSERT(a.sizes()[1] % 4 == 0);
   auto B = a.sizes()[0];
   auto M = a.sizes()[1];
@@ -4069,6 +4079,7 @@ struct Ten {
   std::vector<Ten> chunk4() {
     return LOOKUP(chunk4_f, CHUNK, key())(*this);
   }
+  #undef LOOKUP
   at::ArrayRef<int64_t> sizes() const {
     return ArrayRef<int64_t>(pImpl->sizes, 2);
   }
