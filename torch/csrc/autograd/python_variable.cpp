@@ -1485,6 +1485,8 @@ namespace {
 ska::flat_hash_map<void*, PyObject*> gVariableWrappingCache;
 }
 
+bool gUseHashMap = false;
+
 static const char* VOLATILE_WARNING =
     "volatile was removed and now has no effect. Use "
     "`with torch.no_grad():` instead.";
@@ -1497,7 +1499,10 @@ static PyObject* THPVariable_NewWithVar(PyTypeObject* type, Variable var)
   if (obj) {
     auto v = (THPVariable*) obj;
     new (&v->cdata) Variable(std::move(var));
-    gVariableWrappingCache[v->cdata.unique_instance_tag()] = obj;
+    if (gUseHashMap) {
+      gVariableWrappingCache[v->cdata.unique_instance_tag()] = obj;
+    }
+    v->cdata.set_pyobj(obj);
     // std::cout << gVariableWrappingCache.size() << " - "<< "@@@ constructed new wrapper\n";
     if (auto fn = dynamic_cast<PyFunction*>(v->cdata.grad_fn_unsafe())) {
       // Create a new reference to the THPFunction. This ensures that ref count
@@ -1516,18 +1521,27 @@ PyObject * THPVariable_Wrap(Variable var)
     Py_RETURN_NONE;
   }
 
-  auto it = gVariableWrappingCache.insert({var.unique_instance_tag(), nullptr});
-  if (!it.second) {
-    PyObject* obj = it.first->second;
-    // std::cout << gVariableWrappingCache.size() << " - "<< "@@@ Wrapping var, existing one\n";
-    Py_INCREF(obj);
-    return obj;
-  }
+  if (gUseHashMap) {
+    auto it = gVariableWrappingCache.insert({var.unique_instance_tag(), nullptr});
+    if (!it.second) {
+      PyObject* obj = it.first->second;
+      // std::cout << gVariableWrappingCache.size() << " - "<< "@@@ Wrapping var, existing one\n";
+      Py_INCREF(obj);
+      return obj;
+    }
 
-  // std::cout << gVariableWrappingCache.size() << " - "<< "@@@ Wrapping var, new one\n";
-  PyObject* obj = THPVariable_NewWithVar((PyTypeObject *)THPVariableClass, std::move(var));
-  it.first->second = obj;
-  return obj;
+    // std::cout << gVariableWrappingCache.size() << " - "<< "@@@ Wrapping var, new one\n";
+    PyObject* obj = THPVariable_NewWithVar((PyTypeObject *)THPVariableClass, std::move(var));
+    it.first->second = obj;
+    return obj;
+  } else {
+    if (auto obj = var.pyobj()) {
+      Py_INCREF(obj);
+      return obj;
+    }
+
+    return THPVariable_NewWithVar((PyTypeObject *)THPVariableClass, std::move(var));
+  }
 }
 
 static int THPVariable_traverse(THPVariable *self, visitproc visit, void *arg)
@@ -1565,7 +1579,11 @@ static int THPVariable_clear(THPVariable *self)
       grad_acc->pre_hooks().clear();
     }
     // std::cout << gVariableWrappingCache.size() << " - "<< "@@@ Erasing wrapper\n";
-    gVariableWrappingCache.erase(self->cdata.unique_instance_tag());
+    if (gUseHashMap) {
+      gVariableWrappingCache.erase(self->cdata.unique_instance_tag());
+    } else {
+      self->cdata.set_pyobj(nullptr);
+    }
   }
   self->cdata.reset();
   return 0;
@@ -1586,6 +1604,12 @@ static PyObject *THPVariable_pynew(PyTypeObject *type, PyObject *args, PyObject 
   auto tensor = torch::utils::legacy_tensor_ctor(default_type, args, kwargs);
   return THPVariable_NewWithVar(type, std::move(tensor));
   END_HANDLE_TH_ERRORS
+}
+
+static PyObject* THPVariable_toggle(PyObject* _ignored) {
+  gUseHashMap = !gUseHashMap;
+  std::cerr << "gUseHashMap now is " << gUseHashMap << "\n";
+  Py_RETURN_NONE;
 }
 
 // Instantiates a subclass of torch.Tensor. Used by nn.Parameter()
@@ -1883,6 +1907,7 @@ static PyMappingMethods THPVariable_as_mapping = {
 
 static PyMethodDef extra_methods[] = {
   {"_make_subclass", (PyCFunction)THPVariable_make_subclass, METH_STATIC | METH_VARARGS | METH_KEYWORDS, NULL},
+  {"_toggle", (PyCFunction)THPVariable_toggle, METH_STATIC | METH_NOARGS, NULL},
   {NULL}
 };
 
