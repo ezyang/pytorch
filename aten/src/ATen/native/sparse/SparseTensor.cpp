@@ -124,7 +124,7 @@ namespace {
 }
 
 /* Pointer-copy init */
-SparseTensor new_with_tensor_sparse(const LongTensor& indices, const Tensor& values_) {
+SparseTensor new_with_tensor_sparse(const Type& dtype, const LongTensor& indices, const Tensor& values_) {
   Tensor values;
   if (values_.dim() == 0) {
     // Mimic Numpy behavior here and treat it as a 1D tensor
@@ -137,8 +137,6 @@ SparseTensor new_with_tensor_sparse(const LongTensor& indices, const Tensor& val
   // I'm NOT adding the "obvious" bypass code, because it wasn't supported
   // previously
   AT_CHECK(indices.numel() != 0, "cannot construct sparse tensor with empty indices; use the nullary constructor instead");
-
-  const SparseType& dtype = values.type().toSparse();
 
   // If sizes are not given, it is inferred as max index of each dim.
   int64_t sparseDims = indices.size(0);
@@ -172,7 +170,7 @@ SparseTensor new_with_size_sparse(const SparseType& dtype, ArrayRef<int64_t> siz
 }
 
 // NB: Got rid of the sizes == NULL case
-SparseTensor new_with_tensor_and_size_unsafe_sparse(const LongTensor& indices, const Tensor& values_, ArrayRef<int64_t> sizes) {
+SparseTensor new_with_tensor_and_size_unsafe_sparse(const Type& dtype, const LongTensor& indices, const Tensor& values_, ArrayRef<int64_t> sizes) {
   Tensor values;
   if (values_.dim() == 0) {
     // Mimic Numpy behavior here and treat it as a 1D tensor
@@ -181,7 +179,6 @@ SparseTensor new_with_tensor_and_size_unsafe_sparse(const LongTensor& indices, c
     values = values_;
   }
 
-  const SparseType& dtype = values.type().toSparse();
   // NB: used to be a dim() == 0 test, but that's legacy TH semantics
   if (indices.numel() == 0 && values.numel() == 0) {
     return new_with_size_sparse(dtype, sizes);
@@ -193,7 +190,7 @@ SparseTensor new_with_tensor_and_size_unsafe_sparse(const LongTensor& indices, c
 }
 
 // NB: Got rid of the sizes == NULL case
-SparseTensor new_with_tensor_and_size_sparse(const LongTensor& indices, const Tensor& values_, ArrayRef<int64_t> sizes) {
+SparseTensor new_with_tensor_and_size_sparse(const Type& dtype, const LongTensor& indices, const Tensor& values_, ArrayRef<int64_t> sizes) {
   Tensor values;
   if (values_.dim() == 0) {
     // Mimic Numpy behavior here and treat it as a 1D tensor
@@ -202,7 +199,6 @@ SparseTensor new_with_tensor_and_size_sparse(const LongTensor& indices, const Te
     values = values_;
   }
 
-  const SparseType& dtype = values.type().toSparse();
   // NB: This used to be dims, but mumble TH handling zero-sized tensors
   // incorrectly
   if (indices.numel() == 0 && values.numel() == 0) {

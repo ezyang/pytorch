@@ -359,27 +359,27 @@ Tensor tensor(const Type& dtype, ArrayRef<int64_t> size) {
   }
 }
 
-Tensor sparse_coo_tensor(const Tensor& indices, const Tensor& values) {
+Tensor sparse_coo_tensor(const Type& dtype, const Tensor& indices, const Tensor& values) {
   if (!indices.is_cuda()) {
-    return values.type().toSparse().native_sparse_coo_tensor(indices, values);
+    return native_sparse_coo_tensor(dtype, indices, values);
   } else {
-    return values.type().toSparse().th_sparse_coo_tensor(indices, values);
+    return dtype.th_sparse_coo_tensor(indices, values);
   }
 }
 
-Tensor sparse_coo_tensor(const Tensor& indices, const Tensor& values, ArrayRef<int64_t> size) {
+Tensor sparse_coo_tensor(const Type& dtype, const Tensor& indices, const Tensor& values, ArrayRef<int64_t> size) {
   if (!indices.is_cuda()) {
-    return values.type().toSparse().native_sparse_coo_tensor(indices, values, size);
+    return native_sparse_coo_tensor(dtype, indices, values, size);
   } else {
-    return values.type().toSparse().th_sparse_coo_tensor(indices, values, size);
+    return dtype.th_sparse_coo_tensor(indices, values, size);
   }
 }
 
-Tensor _sparse_coo_tensor_unsafe(const Tensor& indices, const Tensor& values, ArrayRef<int64_t> size) {
+Tensor _sparse_coo_tensor_unsafe(const Type& dtype, const Tensor& indices, const Tensor& values, ArrayRef<int64_t> size) {
   if (!indices.is_cuda()) {
-    return values.type().toSparse()._native_sparse_coo_tensor_unsafe(indices, values, size);
+    return _native_sparse_coo_tensor_unsafe(dtype, indices, values, size);
   } else {
-    return values.type().toSparse()._th_sparse_coo_tensor_unsafe(indices, values, size);
+    return dtype._th_sparse_coo_tensor_unsafe(indices, values, size);
   }
 }
 
