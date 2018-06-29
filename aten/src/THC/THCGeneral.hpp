@@ -17,9 +17,9 @@ struct THCState {
   int numUserSparseHandles;
 
   /* Allocator using cudaMallocHost. */
-  THAllocator* cudaHostAllocator;
-  THAllocator* cudaUVAAllocator;
-  THCDeviceAllocator* cudaDeviceAllocator;
+  at::Allocator* cudaHostAllocator;
+  at::Allocator* cudaUVAAllocator;
+  at::Allocator* cudaDeviceAllocator;
 
   /* Index of the current selected BLAS handle. The actual BLAS handle used
      depends on the current device. */
