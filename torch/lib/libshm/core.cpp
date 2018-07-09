@@ -115,21 +115,7 @@ void libshm_free(void *_ctx, void *data) {
   socket.register_deallocation(info);
 }
 
-struct THManagedSharedDeleter : public at::Deleter {
-  void deallocate(void* ctx, void* data) const override {
-    return libshm_free(ctx, data);
-  }
-  static at::BoundDeleter make(libshm_context* ctx, at::BoundDeleter deleter) {
-    ctx->th_deleter = deleter;
-    return {&singleton_, ctx};
-  }
-  static THManagedSharedDeleter singleton_;
-};
 THManagedSharedDeleter THManagedSharedDeleter::singleton_;
-
-at::Deleter* getTHManagedSharedDeleter() {
-  return &THManagedSharedDeleter::singleton_;
-}
 
 std::unique_ptr<void, at::BoundDeleter> libshm_alloc(void *_ctx, ptrdiff_t size) {
   // TODO: unlock GIL when contacting the manager
@@ -153,4 +139,8 @@ std::unique_ptr<void, at::BoundDeleter> libshm_alloc(void *_ctx, ptrdiff_t size)
   }
   auto ptr = THRefcountedMapAllocator_alloc(ctx->th_context, size);
   return {ptr.release(), THManagedSharedDeleter::make(ctx, ptr.get_deleter())};
+}
+
+void THManagedSharedDeleter::deallocate(void* ctx, void* data) const {
+  return libshm_free(ctx, data);
 }

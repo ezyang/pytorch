@@ -61,7 +61,7 @@ public:
       storage.data_ptr = {&one, BoundDeleter{}};
       storage.size = 1;
     } else {
-      storage.data_ptr = {(void*)(ref.data()), BoundDeleter{}};
+      storage.data_ptr = {const_cast<void*>(static_cast<const void*>(ref.data())), BoundDeleter{}};
       storage.size = ref.size();
     }
     storage.scalar_type = at::CTypeToScalarType<th::from_type<int64_t>>::to();
