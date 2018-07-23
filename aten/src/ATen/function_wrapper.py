@@ -255,25 +255,25 @@ TYPE_RETURN = {
 CHECKED_CAST = {
     'THTensor*':
         CodeTemplate(
-            'checked_cast_tensor<${Tensor}>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay})'),
+            'checked_cast_tensor<${Tensor}>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay}, Backend::${Backend}, ScalarType::${ScalarName})'),
     'THSTensor*':
-    CodeTemplate(
-        'checked_cast_tensor<Sparse${Tensor}>(${arg_name}.tref.pImpl,"${arg_name}",${arg_pos},false)'),
+        CodeTemplate(
+            'checked_cast_tensor<Sparse${Tensor}>(${arg_name}.tref.pImpl,"${arg_name}",${arg_pos},false, Backend::${Backend}, ScalarType::${ScalarName})'),
     'THBoolTensor*':
         CodeTemplate(
-            'checked_cast_tensor<${Backend}ByteTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay})'),
+            'checked_cast_tensor<${Backend}ByteTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay}, Backend::${Backend}, ScalarType::Byte)'),
     'THIndexTensor*':
         CodeTemplate(
-            'checked_cast_tensor<${Backend}LongTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay})'),
+            'checked_cast_tensor<${Backend}LongTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay}, Backend::${Backend}, ScalarType::Long)'),
     'THIntegerTensor*':
         CodeTemplate(
-            'checked_cast_tensor<${Backend}IntTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay})'),
+            'checked_cast_tensor<${Backend}IntTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay}, Backend::${Backend}, ScalarType::Int)'),
     'THDenseTensor*':
         CodeTemplate(
-            'checked_cast_tensor<${DenseTensor}>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay})'),
+            'checked_cast_tensor<${DenseTensor}>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay}, Backend::${DenseBackend}, ScalarType::${ScalarName})'),
     'THDenseIndexTensor*':
         CodeTemplate(
-            'checked_cast_tensor<${DenseBackend}LongTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay})'),
+            'checked_cast_tensor<${DenseBackend}LongTensor>(${arg_name}.pImpl,"${arg_name}",${arg_pos}, ${null_okay}, Backend::${DenseBackend}, ScalarType::Long)'),
     'THStorage*': CodeTemplate('checked_cast_storage<${Storage}>(&${arg_name},"${arg_name}",${arg_pos})'),
     'THGenerator*':
         CodeTemplate(
@@ -285,7 +285,7 @@ CHECKED_CAST = {
     'real': CodeTemplate('${arg_name}.to${ScalarName}()'),
     'accreal': CodeTemplate('${arg_name}.to${AccScalarName}()'),
     'TensorList': CodeTemplate('tensor_list_checked_cast<${Tensor}, Tensor, '
-                               '${THTensor}>(${arg_name},"${arg_name}",${arg_pos})'),
+        '${THTensor}>(${arg_name},"${arg_name}",${arg_pos}, Backend::${Backend}, ScalarType::${ScalarName})'),
     'IntList': CodeTemplate('check_intlist<${size}>(${arg_name}, "${arg_name}", ${arg_pos}${,default_init})')
 }
 
