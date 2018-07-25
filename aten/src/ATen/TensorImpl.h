@@ -38,13 +38,8 @@ struct AT_API TensorImpl : public Retainable {
   virtual std::unique_ptr<Storage> storage() = 0;
   friend struct Type;
 
-  int64_t numel() {
-    int64_t n = 1;
-    for (auto s : sizes()) {
-      n *= s;
-    }
-    return n;
-  }
+  // TODO: Make this method inline again
+  int64_t numel() const;
 
   // 0-dim patchup of TH requires us to have a flag marking
   // if a Tensor should be treated as 0-dim.
