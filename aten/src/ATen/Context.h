@@ -9,6 +9,7 @@
 #include "ATen/core/Error.h"
 #include "ATen/detail/CUDAHooksInterface.h"
 #include "ATen/detail/VariableHooksInterface.h"
+#include "ATen/detail/ComplexHooksInterface.h"
 
 // This is temporary
 #include "ATen/core/ATenCoreTest.h"
@@ -26,7 +27,10 @@ public:
     return type_registry[static_cast<int>(p)][static_cast<int>(s)].get();
   }
   Type * getNonVariableTypeOpt(Backend p, ScalarType s) {
-    if (p != Backend::Undefined) initCUDAIfNeeded(backendToDeviceType(p));
+    if (p != Backend::Undefined) {
+      initCUDAIfNeeded(backendToDeviceType(p));
+      initComplexIfNeeded(s);
+    }
     auto type = getNonVariableTypeRaw(p, s);
 
     if(!type) {
@@ -87,6 +91,11 @@ public:
     });
     return thc_state.get();
   }
+  void lazyInitComplex() {
+    std::call_once(complex_init_, [&] {
+      detail::getComplexHooks().registerComplexTypes(this);
+    });
+  }
 
   THCState* getTHCState() {
     // AT_ASSERT(thc_state);
@@ -124,7 +133,13 @@ private:
       lazyInitCUDA();
     }
   }
+  void initComplexIfNeeded(ScalarType s) {
+    if (isComplexType(s)) {
+      lazyInitComplex();
+    }
+  }
   std::once_flag thc_init;
+  std::once_flag complex_init_;
   bool enabled_cudnn = true;
   bool deterministic_cudnn = false;
   bool benchmark_cudnn = false;
