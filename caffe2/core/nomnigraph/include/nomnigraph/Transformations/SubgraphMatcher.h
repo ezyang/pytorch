@@ -1,7 +1,6 @@
 #ifndef NOM_TRANFORMATIONS_SUBGRAPH_MATCHER_H
 #define NOM_TRANFORMATIONS_SUBGRAPH_MATCHER_H
 
-#include "caffe2/core/common.h"
 #include "nomnigraph/Graph/Graph.h"
 
 #include <functional>
@@ -29,7 +28,7 @@ namespace matcher {
  */
 
 template <typename NodeMatchCriteria>
-class CAFFE2_API MatchNode {
+class MatchNode {
  public:
   static const int kStarCount = -1;
   MatchNode(
@@ -41,11 +40,6 @@ class CAFFE2_API MatchNode {
         includeInSubgraph_(includeInSubgraph),
         count_(count),
         nonTerminal_(nonTerminal) {}
-
-  MatchNode() = default;
-  MatchNode(const MatchNode&) = default;
-  MatchNode& operator=(const MatchNode&) = default;
-  MatchNode(MatchNode&&) = default;
 
   NodeMatchCriteria getCriteria() const {
     return criteria_;
@@ -64,10 +58,10 @@ class CAFFE2_API MatchNode {
   }
 
  private:
-  NodeMatchCriteria criteria_;
-  bool includeInSubgraph_;
-  int count_;
-  bool nonTerminal_;
+  const NodeMatchCriteria criteria_;
+  const bool includeInSubgraph_;
+  const int count_;
+  const bool nonTerminal_;
 };
 
 template <typename NodeMatchCriteria>

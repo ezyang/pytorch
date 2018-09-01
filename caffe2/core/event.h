@@ -51,7 +51,7 @@ typedef void (*EventResetFunction)(Event*);
 typedef std::function<void()> EventCallbackFunction;
 typedef void (*EventSetCallbackFunction)(Event*, EventCallbackFunction);
 
-class CAFFE2_API Event {
+class Event {
  public:
   explicit Event(const DeviceOption& option)
       : event_(), type_(option.device_type()), option_(option) {
@@ -170,20 +170,21 @@ class CAFFE2_API Event {
   int type_;
   DeviceOption option_;
 
-  static EventCreateFunction event_creator_[MaxDeviceTypes];
-  static EventRecordFunction event_recorder_[MaxDeviceTypes];
-  static EventWaitFunction event_waiter_[MaxDeviceTypes]
-                                        [MaxDeviceTypes];
-  static EventFinishFunction event_finisher_[MaxDeviceTypes];
+  CAFFE2_API static EventCreateFunction event_creator_[MaxDeviceTypes];
+  CAFFE2_API static EventRecordFunction event_recorder_[MaxDeviceTypes];
+  CAFFE2_API static EventWaitFunction event_waiter_[MaxDeviceTypes]
+                                                   [MaxDeviceTypes];
+  CAFFE2_API static EventFinishFunction event_finisher_[MaxDeviceTypes];
 
-  static EventQueryFunction event_querier_[MaxDeviceTypes];
-  static EventErrorMessageFunction
+  CAFFE2_API static EventQueryFunction event_querier_[MaxDeviceTypes];
+  CAFFE2_API static EventErrorMessageFunction
       event_err_msg_getter_[MaxDeviceTypes];
-  static EventSetFinishedFunction
+  CAFFE2_API static EventSetFinishedFunction
       event_finished_setter_[MaxDeviceTypes];
-  static EventResetFunction event_resetter_[MaxDeviceTypes];
+  CAFFE2_API static EventResetFunction event_resetter_[MaxDeviceTypes];
 
-  static EventSetCallbackFunction event_callback_setter_[MaxDeviceTypes];
+  CAFFE2_API static EventSetCallbackFunction
+      event_callback_setter_[MaxDeviceTypes];
 
   template <int d>
   friend struct EventCreateFunctionRegisterer;

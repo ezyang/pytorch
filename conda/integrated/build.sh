@@ -47,14 +47,35 @@ else
   export NO_CUDA=1
 fi
 
+
 ###########################################################
-# Build Caffe2 and PyTorch
+# Build Caffe2
+###########################################################
+cmake_args=()
+cmake_args+=("-DCMAKE_INSTALL_PREFIX=$PREFIX")
+
+# Build Caffe2
+mkdir -p caffe2_build && pushd caffe2_build
+cmake "${cmake_args[@]}" $CAFFE2_CMAKE_ARGS ..
+if [ "$(uname)" == 'Darwin' ]; then
+  make "-j$(sysctl -n hw.ncpu)"
+else
+  make "-j$(nproc)"
+fi
+make install/fast
+popd
+
+
+
+
+###########################################################
+# Build Pytorch
 ###########################################################
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  FULL_CAFFE2=1 MACOSX_DEPLOYMENT_TARGET=10.9 python setup.py install
+  MACOSX_DEPLOYMENT_TARGET=10.9 python setup.py install
   exit 0
 fi
-FULL_CAFFE2=1 python setup.py install
+python setup.py install
 
 
 

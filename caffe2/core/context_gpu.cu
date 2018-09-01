@@ -59,10 +59,7 @@ CAFFE2_DEFINE_int(
 
 namespace caffe2 {
 
-ThreadLocalCUDAObjects& CUDAContext::getCudaObjects() {
-  static thread_local ThreadLocalCUDAObjects cuda_objects_;
-  return cuda_objects_;
-}
+thread_local ThreadLocalCUDAObjects CUDAContext::cuda_objects_;
 
 // TODO(jiayq): these variables shouldn't be currently accessed during static
 // initialization. We should consider moving them to a Mayer's singleton to
