@@ -52,6 +52,12 @@ TEST_CASE("serialization") {
         // XXX can't serialize half tensors at the moment since contiguous() is
         // not implemented for this type;
         continue;
+      } else if (i == static_cast<int>(torch::Dtype::ComplexFloat)) {
+        // Not supported yet
+        continue;
+      } else if (i == static_cast<int>(torch::Dtype::ComplexDouble)) {
+        // Not supported yet
+        continue;
       } else if (i == static_cast<int>(torch::Dtype::Undefined)) {
         // We can't construct a tensor for this type. This is tested in
         // serialization/undefined anyway.
