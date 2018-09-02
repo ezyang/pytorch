@@ -17,7 +17,7 @@ struct AT_API ComplexHooksInterface {
 
 struct AT_API ComplexHooksArgs {};
 AT_DECLARE_REGISTRY(ComplexHooksRegistry, ComplexHooksInterface, ComplexHooksArgs)
-#define REGISTER_Complex_HOOKS(clsname) \
+#define REGISTER_COMPLEX_HOOKS(clsname) \
   AT_REGISTER_CLASS(ComplexHooksRegistry, clsname, clsname)
 
 namespace detail {

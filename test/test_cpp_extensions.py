@@ -23,248 +23,156 @@ if TEST_CUDA:
 
 
 class TestCppExtension(common.TestCase):
-    def test_extension_function(self):
-        x = torch.randn(4, 4)
-        y = torch.randn(4, 4)
-        z = cpp_extension.sigmoid_add(x, y)
-        self.assertEqual(z, x.sigmoid() + y.sigmoid())
 
-    def test_extension_module(self):
-        mm = cpp_extension.MatrixMultiplier(4, 8)
-        weights = torch.rand(8, 4)
-        expected = mm.get().mm(weights)
-        result = mm.forward(weights)
-        self.assertEqual(expected, result)
 
-    def test_backward(self):
-        mm = cpp_extension.MatrixMultiplier(4, 8)
-        weights = torch.rand(8, 4, requires_grad=True)
-        result = mm.forward(weights)
-        result.sum().backward()
-        tensor = mm.get()
-
-        expected_weights_grad = tensor.t().mm(torch.ones([4, 4]))
-        self.assertEqual(weights.grad, expected_weights_grad)
-
-        expected_tensor_grad = torch.ones([4, 4]).mm(weights.t())
-        self.assertEqual(tensor.grad, expected_tensor_grad)
-
-    def test_jit_compile_extension(self):
-        module = torch.utils.cpp_extension.load(
-            name='jit_extension',
-            sources=[
-                'cpp_extensions/jit_extension.cpp',
-                'cpp_extensions/jit_extension2.cpp'
-            ],
-            extra_include_paths=['cpp_extensions'],
-            extra_cflags=['-g'],
-            verbose=True)
-        x = torch.randn(4, 4)
-        y = torch.randn(4, 4)
-
-        z = module.tanh_add(x, y)
-        self.assertEqual(z, x.tanh() + y.tanh())
-
-        # Checking we can call a method defined not in the main C++ file.
-        z = module.exp_add(x, y)
-        self.assertEqual(z, x.exp() + y.exp())
-
-        # Checking we can use this JIT-compiled class.
-        doubler = module.Doubler(2, 2)
-        self.assertIsNone(doubler.get().grad)
-        self.assertEqual(doubler.get().sum(), 4)
-        self.assertEqual(doubler.forward().sum(), 8)
-
-    @unittest.skipIf(not TEST_CUDA, "CUDA not found")
-    def test_cuda_extension(self):
-        import torch_test_cpp_extension.cuda as cuda_extension
-
-        x = torch.zeros(100, device='cuda', dtype=torch.float32)
-        y = torch.zeros(100, device='cuda', dtype=torch.float32)
-
-        z = cuda_extension.sigmoid_add(x, y).cpu()
-
-        # 2 * sigmoid(0) = 2 * 0.5 = 1
-        self.assertEqual(z, torch.ones_like(z))
-
-    @unittest.skipIf(not TEST_CUDA, "CUDA not found")
-    def test_jit_cuda_extension(self):
-        # NOTE: The name of the extension must equal the name of the module.
-        module = torch.utils.cpp_extension.load(
-            name='torch_test_cuda_extension',
-            sources=[
-                'cpp_extensions/cuda_extension.cpp',
-                'cpp_extensions/cuda_extension.cu'
-            ],
-            extra_cuda_cflags=['-O2'],
-            verbose=True)
-
-        x = torch.zeros(100, device='cuda', dtype=torch.float32)
-        y = torch.zeros(100, device='cuda', dtype=torch.float32)
-
-        z = module.sigmoid_add(x, y).cpu()
-
-        # 2 * sigmoid(0) = 2 * 0.5 = 1
-        self.assertEqual(z, torch.ones_like(z))
-
-    @unittest.skipIf(not TEST_CUDNN, "CuDNN not found")
-    def test_jit_cudnn_extension(self):
-        # implementation of CuDNN ReLU
-        if sys.platform == 'win32':
-            extra_ldflags = ['cudnn.lib']
-        else:
-            extra_ldflags = ['-lcudnn']
-        module = torch.utils.cpp_extension.load(
-            name='torch_test_cudnn_extension',
-            sources=[
-                'cpp_extensions/cudnn_extension.cpp'
-            ],
-            extra_ldflags=extra_ldflags,
-            verbose=True,
-            with_cuda=True)
-
-        x = torch.randn(100, device='cuda', dtype=torch.float32)
-        y = torch.zeros(100, device='cuda', dtype=torch.float32)
-        module.cudnn_relu(x, y)  # y=relu(x)
-        self.assertEqual(torch.nn.functional.relu(x), y)
-        with self.assertRaisesRegex(RuntimeError, "same size"):
-            y_incorrect = torch.zeros(20, device='cuda', dtype=torch.float32)
-            module.cudnn_relu(x, y_incorrect)
-
-    def test_optional(self):
-        has_value = cpp_extension.function_taking_optional(torch.ones(5))
-        self.assertTrue(has_value)
-        has_value = cpp_extension.function_taking_optional(None)
-        self.assertFalse(has_value)
-
-    def test_inline_jit_compile_extension_with_functions_as_list(self):
+    def test_complex_registration(self):
         cpp_source = '''
-        at::Tensor tanh_add(at::Tensor x, at::Tensor y) {
-          return x.tanh() + y.tanh();
-        }
-        '''
+        #include <ATen/detail/ComplexHooksInterface.h>
+        #include <ATen/detail/VariableHooksInterface.h>
+        #include <ATen/Type.h>
+        #include <ATen/CPUFloatType.h>
 
-        module = torch.utils.cpp_extension.load_inline(
-            name='inline_jit_extension_with_functions_list',
-            cpp_sources=cpp_source,
-            functions='tanh_add',
-            verbose=True)
+        #include "ATen/TensorImpl.h"
+        #include "ATen/CPUGenerator.h"
+        #include "ATen/TensorImpl.h"
+        #include "ATen/Allocator.h"
+        #include "ATen/DeviceGuard.h"
+        #include "ATen/NativeFunctions.h"
+        #include "ATen/UndefinedTensor.h"
+        #include "ATen/Utils.h"
+        #include "ATen/WrapDimUtils.h"
+        #include "ATen/core/Half.h"
+        #include "ATen/core/optional.h"
 
-        self.assertEqual(module.tanh_add.__doc__.split('\n')[2], 'tanh_add')
+        #include <cstddef>
+        #include <functional>
+        #include <memory>
+        #include <utility>
 
-        x = torch.randn(4, 4)
-        y = torch.randn(4, 4)
+        #include "ATen/Config.h"
 
-        z = module.tanh_add(x, y)
-        self.assertEqual(z, x.tanh() + y.tanh())
+        namespace at {
 
-    def test_inline_jit_compile_extension_with_functions_as_dict(self):
-        cpp_source = '''
-        at::Tensor tanh_add(at::Tensor x, at::Tensor y) {
-          return x.tanh() + y.tanh();
-        }
-        '''
+        struct CPUComplexFloatType : public at::Type {
 
-        module = torch.utils.cpp_extension.load_inline(
-            name='inline_jit_extension_with_functions_dict',
-            cpp_sources=cpp_source,
-            functions={'tanh_add': 'Tanh and then sum :D'},
-            verbose=True)
+          CPUComplexFloatType()
+            : Type(CPUTensorId(), /*is_variable=*/false, /*is_undefined=*/false) {}
 
-        self.assertEqual(
-            module.tanh_add.__doc__.split('\n')[2], 'Tanh and then sum :D')
+          virtual ScalarType scalarType() const override;
+          virtual Backend backend() const override;
+          virtual bool is_cuda() const override;
+          virtual bool is_sparse() const override;
+          virtual bool is_distributed() const override;
+          virtual Storage storage(bool resizable = false) const override;
+          virtual Storage storage(size_t size, bool resizable = false) const override;
+          virtual Storage storageFromBlob(void * data, int64_t size, const std::function<void(void*)> & deleter) const override;
+          virtual Storage storageWithAllocator(int64_t size, Allocator* allocator) const override;
+          virtual std::unique_ptr<Generator> generator() const override;
+          virtual const char * toString() const override;
+          virtual size_t elementSizeInBytes() const override;
+          virtual TypeID ID() const override;
+          static const char * typeString();
+          virtual Storage unsafeStorageFromTH(void * th_pointer, bool retain) const override;
+          virtual Tensor unsafeTensorFromTH(void * th_pointer, bool retain) const override;
+          virtual Tensor & s_copy_(Tensor & self, const Tensor & src, bool non_blocking) const override;
+          virtual Tensor & _s_copy_from(const Tensor & self, Tensor & dst, bool non_blocking) const override;
+        };
 
-    def test_inline_jit_compile_extension_multiple_sources_and_no_functions(self):
-        cpp_source1 = '''
-        at::Tensor sin_add(at::Tensor x, at::Tensor y) {
-          return x.sin() + y.sin();
-        }
-        '''
-
-        cpp_source2 = '''
-        #include <torch/torch.h>
-        at::Tensor sin_add(at::Tensor x, at::Tensor y);
-        PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-          m.def("sin_add", &sin_add, "sin(x) + sin(y)");
-        }
-        '''
-
-        module = torch.utils.cpp_extension.load_inline(
-            name='inline_jit_extension',
-            cpp_sources=[cpp_source1, cpp_source2],
-            verbose=True)
-
-        x = torch.randn(4, 4)
-        y = torch.randn(4, 4)
-
-        z = module.sin_add(x, y)
-        self.assertEqual(z, x.sin() + y.sin())
-
-    @unittest.skipIf(not TEST_CUDA, "CUDA not found")
-    def test_inline_jit_compile_extension_cuda(self):
-        cuda_source = '''
-        __global__ void cos_add_kernel(
-            const float* __restrict__ x,
-            const float* __restrict__ y,
-            float* __restrict__ output,
-            const int size) {
-          const auto index = blockIdx.x * blockDim.x + threadIdx.x;
-          if (index < size) {
-            output[index] = __cosf(x[index]) + __cosf(y[index]);
+        struct ComplexHooks : public at::ComplexHooksInterface {
+          ComplexHooks(ComplexHooksArgs) {}
+          void registerComplexTypes(Context* context) const override {
+            context->registerType(Backend::CPU, ScalarType::ComplexFloat, new CPUComplexFloatType());
           }
+        };
+
+        ScalarType CPUComplexFloatType::scalarType() const {
+          return ScalarType::ComplexFloat;
         }
 
-        at::Tensor cos_add(at::Tensor x, at::Tensor y) {
-          auto output = at::zeros_like(x);
-          const int threads = 1024;
-          const int blocks = (output.numel() + threads - 1) / threads;
-          cos_add_kernel<<<blocks, threads>>>(x.data<float>(), y.data<float>(), output.data<float>(), output.numel());
-          return output;
+        Backend CPUComplexFloatType::backend() const {
+          return Backend::CPU;
         }
+        bool CPUComplexFloatType::is_cuda() const { return backend() == Backend::CUDA || backend() == Backend::SparseCUDA; }
+        bool CPUComplexFloatType::is_sparse() const { return backend() == Backend::SparseCPU || backend() == Backend::SparseCUDA; }
+        bool CPUComplexFloatType::is_distributed() const { return false; }
+
+        Storage CPUComplexFloatType::storage(bool resizable) const {
+          return Storage(
+              ScalarType::ComplexFloat,
+              0,
+              getTHDefaultAllocator(),
+              resizable
+          );
+        }
+        Storage CPUComplexFloatType::storage(size_t size, bool resizable) const {
+          return Storage(
+              ScalarType::ComplexFloat,
+              size,
+              getTHDefaultAllocator(),
+              resizable
+          );
+        }
+        Storage CPUComplexFloatType::storageFromBlob(void * data, int64_t size, const std::function<void(void*)> & deleter) const {
+            return Storage(
+              ScalarType::ComplexFloat,
+              InefficientStdFunctionContext::makeDataPtr(data, deleter,
+                DeviceType::CPU
+              ),
+              size,
+              deleter);
+        }
+        Storage CPUComplexFloatType::storageWithAllocator(int64_t size, Allocator* allocator) const {
+            return Storage(ScalarType::ComplexFloat, size, allocator);
+        }
+        Tensor CPUComplexFloatType::unsafeTensorFromTH(void * th_pointer, bool retain) const {
+          return Tensor(static_cast<TensorImpl*>(th_pointer), retain);
+        }
+        Storage CPUComplexFloatType::unsafeStorageFromTH(void * th_pointer, bool retain) const {
+          if (retain)
+            THFloatStorage_retain( (THFloatStorage*) th_pointer);
+          return Storage((THFloatStorage*) th_pointer);
+        }
+        std::unique_ptr<Generator> CPUComplexFloatType::generator() const {
+          // Hmm, this is weird.
+          return nullptr;
+          // return std::unique_ptr<Generator>(new CPUGenerator(&at::globalContext()));
+        }
+
+        const char * CPUComplexFloatType::toString() const {
+          return CPUComplexFloatType::typeString();
+        }
+        TypeID CPUComplexFloatType::ID() const {
+          return TypeID::CPUComplexFloat;
+        }
+
+        size_t CPUComplexFloatType::elementSizeInBytes() const {
+          return sizeof(float);
+        }
+
+        const char * CPUComplexFloatType::typeString() {
+          return "CPUComplexFloatType";
+        }
+
+        Tensor & CPUComplexFloatType::s_copy_(Tensor & dst, const Tensor & src, bool non_blocking) const {
+          AT_ERROR("not yet supported");
+        }
+
+        Tensor & CPUComplexFloatType::_s_copy_from(const Tensor & src, Tensor & dst, bool non_blocking) const {
+          AT_ERROR("not yet supported");
+        }
+
+        REGISTER_COMPLEX_HOOKS(ComplexHooks);
+
+        } // namespace at
         '''
 
-        # Here, the C++ source need only declare the function signature.
-        cpp_source = 'at::Tensor cos_add(at::Tensor x, at::Tensor y);'
-
         module = torch.utils.cpp_extension.load_inline(
-            name='inline_jit_extension_cuda',
+            name='complex_registration_extension',
             cpp_sources=cpp_source,
-            cuda_sources=cuda_source,
-            functions=['cos_add'],
+            functions=[],
             verbose=True)
 
-        self.assertEqual(module.cos_add.__doc__.split('\n')[2], 'cos_add')
-
-        x = torch.randn(4, 4, device='cuda', dtype=torch.float32)
-        y = torch.randn(4, 4, device='cuda', dtype=torch.float32)
-
-        z = module.cos_add(x, y)
-        self.assertEqual(z, x.cos() + y.cos())
-
-    def test_inline_jit_compile_extension_throws_when_functions_is_bad(self):
-        with self.assertRaises(ValueError):
-            torch.utils.cpp_extension.load_inline(
-                name='invalid_jit_extension', cpp_sources='', functions=5)
-
-    def test_lenient_flag_handling_in_jit_extensions(self):
-        cpp_source = '''
-        at::Tensor tanh_add(at::Tensor x, at::Tensor y) {
-          return x.tanh() + y.tanh();
-        }
-        '''
-
-        module = torch.utils.cpp_extension.load_inline(
-            name='lenient_flag_handling_extension',
-            cpp_sources=cpp_source,
-            functions='tanh_add',
-            extra_cflags=['-g\n\n', '-O0 -Wall'],
-            extra_include_paths=['       cpp_extensions\n', '../'],
-            verbose=True)
-
-        x = torch.zeros(100, dtype=torch.float32)
-        y = torch.zeros(100, dtype=torch.float32)
-        z = module.tanh_add(x, y).cpu()
-        self.assertEqual(z, x.tanh() + y.tanh())
+        torch.zeros(0, dtype=torch.complex64)
 
 
 if __name__ == '__main__':

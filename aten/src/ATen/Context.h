@@ -58,6 +58,10 @@ public:
       return getNonVariableType(p, s);
     }
   }
+  void registerType(Backend b, ScalarType s, Type* t) {
+    type_registry[static_cast<int>(b)][static_cast<int>(s)].reset(t);
+    detail::getVariableHooks().registerVariableTypeFor(this, b, s);
+  }
 
   Generator & defaultGenerator(DeviceType device_type) {
     initCUDAIfNeeded(device_type);
