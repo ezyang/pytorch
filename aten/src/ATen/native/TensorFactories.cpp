@@ -60,7 +60,7 @@ void window_function_checks(
 }
 
 const TypeInternalInterface& getFactoryType(const TensorOptions& options) {
-  return static_cast<const TypeInternalInterface&>(at::getType(options));
+  return dynamic_cast<const TypeInternalInterface&>(at::getType(options));
 }
 
 } // namespace

@@ -177,7 +177,7 @@ static inline ${return_type} ${api_name}(${formals}) {
 # the same name (but different signature) already
 ZERO_DIM_CHECK = CodeTemplate("""\
 if (${check_name}.dim() == 0) {
-    return static_cast<const TypeInternalInterface*>(this)->${api_name}(${zero_dim_actuals});
+    return dynamic_cast<const TypeInternalInterface*>(this)->${api_name}(${zero_dim_actuals});
 }""")
 
 ZERO_DIM_ONLY = CodeTemplate("""\
@@ -187,7 +187,7 @@ AT_ERROR("${api_name} only supports a 0-dimensional ${check_name} tensor, but go
 
 SPARSE_CHECK = CodeTemplate("""\
 if(${check_name}.type().is_sparse()) {
-    return static_cast<const TypeInternalInterface*>(this)->${api_name}(${sparse_actuals});
+    return dynamic_cast<const TypeInternalInterface*>(this)->${api_name}(${sparse_actuals});
 }""")
 
 BUFFER_DEFINITION = CodeTemplate("""\
@@ -1143,7 +1143,7 @@ def create_generic(top_env, declarations):
 
         if is_namespace_function:
             if dispatch_type:
-                option['inferred_type'] = 'static_cast<const TypeInternalInterface&>({})'.format(dispatch_type['name'])
+                option['inferred_type'] = 'dynamic_cast<const TypeInternalInterface&>({})'.format(dispatch_type['name'])
             elif dispatch_tensor:
                 option['inferred_type'] = 'infer_type({})'.format(dispatch_tensor)
             else:

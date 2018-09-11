@@ -23,14 +23,14 @@ ${function_declarations}
 
 static inline TypeInternalInterface & infer_type(const Tensor & t) {
   AT_CHECK(t.defined(), "undefined Tensor");
-  return static_cast<TypeInternalInterface&>(t.type());
+  return dynamic_cast<TypeInternalInterface&>(t.type());
 }
 static inline TypeInternalInterface & infer_type(const TensorList & tl) {
   AT_CHECK(tl.size() > 0, "expected a non-empty list of Tensors");
-  return static_cast<TypeInternalInterface&>(tl[0].type());
+  return dynamic_cast<TypeInternalInterface&>(tl[0].type());
 }
 static inline TypeInternalInterface & non_specific_type() {
-  return static_cast<TypeInternalInterface&>(at::getNonVariableType(at::Backend::Undefined, at::ScalarType::Float));
+  return dynamic_cast<TypeInternalInterface&>(at::getNonVariableType(at::Backend::Undefined, at::ScalarType::Float));
 }
 // function definitions are all static inline because
 // they are one-line statically dispatched functions that
