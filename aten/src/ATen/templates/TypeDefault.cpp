@@ -40,6 +40,14 @@ Tensor TypeDefault::copy(const Tensor & src, bool non_blocking) const {
   }
 }
 
+void TypeDefault::backward(Tensor & self, at::optional<Tensor> gradient, bool keep_graph, bool create_graph) const {
+  AT_ERROR("backward is not implemented for Tensor");
+}
+
+void TypeDefault::set_data(Tensor & self, Tensor new_data) const {
+  AT_ERROR("set_data is not implemented for Tensor");
+}
+
 Type & TypeDefault::toBackend(Backend b) const {
   return at::globalContext().getNonVariableType(b,scalarType());
 }
@@ -99,7 +107,11 @@ Storage TypeDefault::storageWithAllocator(int64_t size, Allocator* allocator) co
     return Storage(scalarType(), size, allocator);
 }
 Tensor TypeDefault::unsafeTensorFromTH(void * th_pointer, bool retain) const {
-  return Tensor(static_cast<TensorImpl*>(th_pointer), retain);
+  auto tensor_impl = c10::intrusive_ptr<TensorImpl, UndefinedTensor>::reclaim(static_cast<TensorImpl*>(th_pointer));
+  if (retain && tensor_impl.get() != UndefinedTensor::singleton()) {
+    c10::raw::intrusive_ptr::incref(tensor_impl.get());
+  }
+  return Tensor(std::move(tensor_impl));
 }
 Storage TypeDefault::unsafeStorageFromTH(void * th_pointer, bool retain) const {
   if (retain && th_pointer) {

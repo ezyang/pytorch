@@ -41,20 +41,12 @@ namespace at {
 // special care must be taken to handle this.
 struct AT_API Tensor {
   Tensor(){};
-  Tensor(TensorImpl* tensor_impl, bool retain)
-      : tensor_impl_(c10::intrusive_ptr<TensorImpl, UndefinedTensor>::reclaim(
-            tensor_impl)) {
-    if (tensor_impl == nullptr) {
+  Tensor(c10::intrusive_ptr<TensorImpl, UndefinedTensor> tensor_impl)
+      : tensor_impl_(std::move(tensor_impl)) {
+    if (tensor_impl_.get() == nullptr) {
       throw std::runtime_error("TensorBaseImpl with nullptr not supported");
     }
-    if (retain && tensor_impl != UndefinedTensor::singleton()) {
-      c10::raw::intrusive_ptr::incref(tensor_impl);
-    }
   }
-  Tensor(const c10::intrusive_ptr<TensorImpl, UndefinedTensor>& ptr)
-      : tensor_impl_(ptr) {}
-  Tensor(c10::intrusive_ptr<TensorImpl, UndefinedTensor>&& ptr)
-      : tensor_impl_(std::move(ptr)) {}
 
   Tensor(const Tensor&) = default;
   Tensor(Tensor&&) = default;
@@ -244,9 +236,7 @@ struct AT_API Tensor {
     return tensor_impl_->grad();
   }
 
-  void set_data(Tensor new_data) {
-    tensor_impl_->set_data(new_data);
-  }
+  void set_data(Tensor new_data);
 
   /// Computes the gradient of current tensor w.r.t. graph leaves.
   void backward(
