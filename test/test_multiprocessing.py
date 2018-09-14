@@ -412,8 +412,10 @@ class TestMultiprocessing(TestCase):
         p = ctx.Process(target=autograd_sharing, args=(queue, ready, master_modified, device, is_parameter))
         p.daemon = True
         p.start()
+
         def hook(*unused):
             pass
+
         if var.requires_grad:
             var.register_hook(hook)
         var._grad = torch.zeros(5, 5, device=device)
