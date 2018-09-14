@@ -104,6 +104,7 @@ def autograd_sharing(queue, ready, master_modified, device, is_parameter):
     var.data[:] = torch.ones(5, 5, device=device)
 
     is_ok &= var.grad is None
+    is_ok &= var._backward_hooks is None
     if is_parameter:
         is_ok &= type(var) == Parameter
     else:
@@ -411,6 +412,10 @@ class TestMultiprocessing(TestCase):
         p = ctx.Process(target=autograd_sharing, args=(queue, ready, master_modified, device, is_parameter))
         p.daemon = True
         p.start()
+        def hook(*unused):
+            pass
+        if var.requires_grad:
+            var.register_hook(hook)
         var._grad = torch.zeros(5, 5, device=device)
         queue.put(var)
 
