@@ -838,7 +838,6 @@ include_dirs += [
     tmp_install_path + "/include",
     tmp_install_path + "/include/TH",
     tmp_install_path + "/include/THNN",
-    tmp_install_path + "/include/ATen",
     third_party_path + "/pybind11/include",
     os.path.join(cwd, "torch", "csrc"),
     "build/third_party",
