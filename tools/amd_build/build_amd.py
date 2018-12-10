@@ -55,12 +55,12 @@ includes = [
 ignores = [
     "caffe2/operators/depthwise_3x3_conv_op_cudnn.cu",
     "caffe2/operators/pool_op_cudnn.cu",
-    '**/hip/**',
+    '*/hip/*',
     # These files are compatible with both cuda and hip
-    "aten/src/ATen/core/**",
-    "torch/csrc/autograd/engine.cpp"
+    "aten/src/ATen/core/*",
+    "torch/csrc/autograd/engine.cpp",
     # generated files we shouldn't frob
-    "torch/lib/tmp_install/**",
+    "torch/lib/tmp_install/*",
 ]
 
 json_settings = os.path.join(amd_build_dir, "disabled_features.json")
