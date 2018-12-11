@@ -1,6 +1,8 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <THC/THCGeneral.hpp>
 
+#include <c10/cuda/impl/CUDAGuardImpl.h>
+
 namespace at { namespace cuda {
 
 /* Device info */
@@ -30,7 +32,7 @@ cublasHandle_t getCurrentCUDABlasHandle() {
 }
 
 // THIS IS A MASSIVE HACK
-C10_REGISTER_GUARD_IMPL(CUDA, c10::cuda::CUDAGuardImpl);
+C10_REGISTER_GUARD_IMPL(CUDA, c10::cuda::impl::CUDAGuardImpl);
 
 } // namespace cuda
 
