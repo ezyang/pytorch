@@ -30,7 +30,7 @@ cublasHandle_t getCurrentCUDABlasHandle() {
 }
 
 // THIS IS A MASSIVE HACK
-C10_REGISTER_GUARD_IMPL(CUDA, CUDAGuardImpl);
+C10_REGISTER_GUARD_IMPL(CUDA, c10::cuda::CUDAGuardImpl);
 
 } // namespace cuda
 
