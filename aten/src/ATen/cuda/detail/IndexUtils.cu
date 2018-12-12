@@ -34,6 +34,7 @@ that is nicely "nested," with each dimension contained
 within the next one.
 */
 bool maybeOverlappingIndices(const Tensor& t) {
+#ifndef __HIP_PLATFORM_HCC__
   /* Extract size/stride arrays; only consider size >1 dims. */
   SizeAndStride *info = (SizeAndStride *)alloca(sizeof(SizeAndStride) * t.dim());
   int dims = t.dim();
@@ -67,6 +68,9 @@ bool maybeOverlappingIndices(const Tensor& t) {
   }
 
   return false;
+#else
+  AT_ASSERTM(false, "This function causes ICEs in hcc, see https://github.com/pytorch/pytorch/issues/15121");
+#endif
 }
 
 bool canUse32BitIndexMath(const Tensor& t, int64_t max_elem) {
