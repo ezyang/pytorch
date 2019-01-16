@@ -292,21 +292,16 @@ It uses the Python 3 inspect module.
         return ["def {}({}): ...".format(fname, python_parameters, return_annotation)]
 
 
-def do_gen_pyi(build_lib_path):
-    """do_gen_pyi(build_lib_path)
+def do_gen_pyi():
+    """do_gen_pyi()
 
 This function generates a pyi file for torch. To do this, it imports torch and loops
 over the members of torch and torch.Tensor.
 
 To import torch it removes things from the import path and adds the freshly build PyTorch.
-As such it is inteded to be used from a subprocess.
+As such it is intended to be used from a subprocess.
 """
-    while '' in sys.path:
-        # we don't want to have the source directory (with a torch but without torch._C) in our path
-        sys.path.remove('')
-    sys.path.insert(0, build_lib_path)
     import torch
-    assert torch.__file__.startswith(build_lib_path)
 
     yaml_loader = getattr(yaml, 'CLoader', yaml.loader)
 
@@ -508,15 +503,15 @@ class set_grad_enabled():
     footer += '\n'.join(['{}: dtype = ...'.format(n)
                          for n in dir(torch) if isinstance(getattr(torch, n), torch.dtype)])
 
-    with open(os.path.join(build_lib_path, 'torch', '__init__.pyi'), 'w') as f:
+    with open(os.path.join('torch', '__init__.pyi'), 'w') as f:
         print(header, file=f)
         print(tensor_type_hints_s, file=f)
         print(type_hints_s, file=f)
         print(footer, file=f)
 
 
-def gen_pyi(build_lib_path):
+def gen_pyi():
     # we import torch, better do that in a subprocess
-    p = multiprocessing.Process(target=do_gen_pyi, args=(build_lib_path,))
+    p = multiprocessing.Process(target=do_gen_pyi)
     p.start()
     p.join()

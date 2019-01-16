@@ -40,6 +40,7 @@ test/cpp_extensions/install/
 third_party/build/
 tools/shared/_utils_internal.py
 torch.egg-info/
+torch/__init__.pyi
 torch/csrc/autograd/generated/*
 torch/csrc/cudnn/cuDNN.cpp
 torch/csrc/generated

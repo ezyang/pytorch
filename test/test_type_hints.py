@@ -18,9 +18,9 @@ except ImportError:
 
 def get_examples_from_docstring(docstr):
     """
-Extracts all runnable python code from the examples
-in docstrings an returns a list of lines.
-"""
+    Extracts all runnable python code from the examples
+    in docstrings; returns a list of lines.
+    """
     example_file_lines = []
     # the detection is a bit hacky because there isn't a nice way of detecting
     # where multiline commands end. Thus we keep track of how far we got in beginning
@@ -55,8 +55,9 @@ in docstrings an returns a list of lines.
 
 def get_all_examples():
     """get_all_examples() -> str
-This function grabs (hopefully all) examples from the torch documentation
-strings and puts them in one nonsensical module returned as a string.
+
+    This function grabs (hopefully all) examples from the torch documentation
+    strings and puts them in one nonsensical module returned as a string.
     """
     blacklist = {"load", "save", "_np"}
     allexamples = ""
@@ -96,10 +97,13 @@ class TestTypeHints(TestCase):
     @unittest.skipIf(sys.version_info[0] == 2, "not type hints for Python 2")
     @unittest.skipIf(not HAVE_MYPY, "need mypy")
     def test_doc_examples(self):
-        """run documentation examples through mypy.
-mypy can be picky about its environment, so we need
-to set up a temporary dir and link the torch module
-into it"""
+        """
+        Run documentation examples through mypy.
+
+        mypy can be picky about its environment, so we need
+        to set up a temporary dir and link the torch module
+        into it
+        """
         with tempfile.TemporaryDirectory() as tmp_dir:
             fn = os.path.join(tmp_dir, 'test.py')
             curdir = os.getcwd()
@@ -111,7 +115,7 @@ into it"""
             except OSError:
                 raise unittest.SkipTest('cannot symlink')
             try:
-                result = subprocess.run(['python3', '-mmypy', '--follow-imports',
+                result = subprocess.run([sys.executable, '-mmypy', '--follow-imports',
                                          'silent', '--check-untyped-defs', 'test.py'],
                                         check=True)
             except subprocess.CalledProcessError as e:
