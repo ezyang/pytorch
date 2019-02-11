@@ -10,6 +10,19 @@ docker_config_defaults: &docker_config_defaults
     aws_access_key_id: ${CIRCLECI_AWS_ACCESS_KEY_FOR_ECR_READ_WRITE_V3}
     aws_secret_access_key: ${CIRCLECI_AWS_SECRET_KEY_FOR_ECR_READ_WRITE_V3}
 
+kill_apt_daily_service: &kill_apt_daily_service
+  name: Kill apt-daily.service
+  no_output_timeout: "1h"
+  command: |
+    systemctl stop apt-daily.service
+    systemctl kill --kill-who=all apt-daily.service
+
+    while ! (systemctl list-units --all apt-daily.service | fgrep -q dead)
+    do
+      echo "Waiting..."
+      sleep 1;
+    done
+
 # This system setup script is meant to run before the CI-related scripts, e.g.,
 # installing Git client, checking out code, setting up CI env, and
 # building/testing.
@@ -230,6 +243,8 @@ pytorch_linux_build_defaults: &pytorch_linux_build_defaults
     image: default
   steps:
   - run:
+      <<: *kill_apt_daily_service
+  - run:
       <<: *setup_linux_system_environment
   - run:
       <<: *install_official_git_client
@@ -265,6 +280,8 @@ pytorch_linux_test_defaults: &pytorch_linux_test_defaults
     image: default
   steps:
   - run:
+      <<: *kill_apt_daily_service
+  - run:
       <<: *setup_linux_system_environment
   - run:
       <<: *setup_ci_environment
@@ -293,6 +310,8 @@ caffe2_linux_build_defaults: &caffe2_linux_build_defaults
   machine:
     image: default
   steps:
+  - run:
+      <<: *kill_apt_daily_service
   - run:
       <<: *setup_linux_system_environment
   - run:
@@ -354,6 +373,8 @@ caffe2_linux_test_defaults: &caffe2_linux_test_defaults
   machine:
     image: default
   steps:
+  - run:
+      <<: *kill_apt_daily_service
   - run:
       <<: *setup_linux_system_environment
   - run:
@@ -746,6 +767,8 @@ binary_linux_test: &binary_linux_test
     image: default
   steps:
   - run:
+      <<: *kill_apt_daily_service
+  - run:
       <<: *setup_linux_system_environment
   - run:
       <<: *setup_ci_environment
@@ -811,6 +834,8 @@ binary_linux_upload: &binary_linux_upload
   machine:
     image: default
   steps:
+  - run:
+      <<: *kill_apt_daily_service
   - run:
       <<: *setup_linux_system_environment
   - run:
@@ -996,6 +1021,8 @@ smoke_linux_test: &smoke_linux_test
   machine:
     image: default
   steps:
+  - run:
+      <<: *kill_apt_daily_service
   - run:
       <<: *setup_linux_system_environment
   - run:
@@ -1274,6 +1301,8 @@ jobs:
       image: default
     steps:
     - run:
+        <<: *kill_apt_daily_service
+    - run:
         <<: *setup_linux_system_environment
     - run:
         <<: *setup_ci_environment
@@ -1304,6 +1333,8 @@ jobs:
     machine:
       image: default
     steps:
+    - run:
+        <<: *kill_apt_daily_service
     - run:
         <<: *setup_linux_system_environment
     - run:
@@ -1620,6 +1651,8 @@ jobs:
     machine:
       image: default
     steps:
+    - run:
+        <<: *kill_apt_daily_service
     - run:
         <<: *setup_linux_system_environment
     - run:
