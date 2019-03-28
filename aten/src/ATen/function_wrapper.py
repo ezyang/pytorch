@@ -104,6 +104,7 @@ ${return_type} ${Type}::${method_prefix_derived}${api_name}(${type_method_formal
 TYPE_DERIVED_DEFINITION_NATIVE = CodeTemplate("""\
 ${return_type} ${Type}::${api_name}(${type_method_formals}) const {
     ${device_guard_declaration}
+    LOG(INFO) << "at::native::${native_type_method_dispatch}";
     ${return_call} at::native::${native_type_method_dispatch}(/* actuals */ ${actuals});
 }
 """)
@@ -113,6 +114,7 @@ ${return_type} ${Type}::${api_name}(${type_method_formals}) const {
 }
 """)
 TYPE_DEFINITION_BODY_NATIVE = CodeTemplate("""\
+LOG(INFO) << "at::native::${native_type_method_dispatch}";
 ${return_call} at::native::${native_type_method_dispatch}(/* native_actuals */ ${native_actuals});
 """)
 
@@ -156,6 +158,7 @@ CAFFE2_API ${return_type} ${native_type_method_dispatch}(${formals_with_defaults
 FACTORY_DEFINITION = CodeTemplate("""\
 static inline ${return_type} ${api_name}(${formals}) {
     const DeviceGuard guard(options.device());
+    LOG(INFO) << "at::native::${api_name}";
     return at::native::${api_name}(${type_method_actuals});
 }
 """)
