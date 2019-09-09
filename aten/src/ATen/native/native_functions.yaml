@@ -5878,3 +5878,9 @@
   dispatch:
     CPU: im2col_backward_cpu
     CUDA: im2col_backward_cuda
+
+# For benchmarking
+- func: _const5(Tensor self, Tensor second, Tensor third, Tensor fourth, Tensor fifth) -> Tensor
+  variants: function
+  dispatch:
+    CPU: _const5
