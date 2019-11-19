@@ -45,44 +45,6 @@ std::string Tensor::toString() const {
   return type().toString();
 }
 
-Tensor Tensor::variable_data() const noexcept {
-  TORCH_CHECK(defined(), "cannot call variable_data() on undefined tensor");
-  auto self_impl_copy = unsafeGetTensorImpl()->shallow_copy_and_detach(
-    /*version_counter=*/0,
-    /*allow_tensor_metadata_change=*/false);
-  self_impl_copy->set_autograd_meta(nullptr);
-  return at::Tensor(self_impl_copy);
-}
-
-Tensor Tensor::tensor_data() const noexcept {
-  TORCH_CHECK(defined(), "cannot call tensor_data() on undefined tensor");
-  auto self_impl_copy = unsafeGetTensorImpl()->shallow_copy_and_detach(
-    /*version_counter=*/unsafeGetTensorImpl()->version_counter(),
-    /*allow_tensor_metadata_change=*/unsafeGetTensorImpl()->allow_tensor_metadata_change());
-  return at::Tensor(self_impl_copy);
-}
-
-// View Variables
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-bool Tensor::is_view() const noexcept {
-  if (torch::autograd::impl::get_autograd_meta(*this)) {
-    return torch::autograd::impl::get_autograd_meta(*this)->is_view_;
-  } else {
-    return false;
-  }
-}
-
-const Tensor& Tensor::base() const {
-  if (is_view()) {
-    // is_view() implies get_autograd_meta()
-    auto diff_view_meta = static_cast<torch::autograd::DifferentiableViewMeta*>(torch::autograd::impl::get_autograd_meta(*this));
-    return diff_view_meta->base_;
-  } else {
-    throw std::runtime_error("Can't get base of non-view Variable");
-  }
-}
-
 namespace {
   std::string singleton_string;
 }
@@ -99,6 +61,18 @@ const std::string& Tensor::name() const noexcept {
 namespace {
   std::shared_ptr<torch::autograd::Node> singleton_shared_ptr;
 }
+
+#if 0
+
+const std::shared_ptr<torch::autograd::Node>& Tensor::grad_fn() const {
+  static c10::OperatorHandle op = c10::Dispatcher::singleton()
+          .findSchema({"aten::grad_fn", ""}).value();
+  return c10::Dispatcher::singleton().callUnboxedOnly<std::shared_ptr<torch::autograd::Node>&, const Tensor &>(
+          op, *this);
+}
+
+
+#endif
 
 const std::shared_ptr<torch::autograd::Node>& Tensor::grad_fn() const {
   if (is_view()) {

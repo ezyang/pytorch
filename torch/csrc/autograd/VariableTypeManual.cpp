@@ -291,6 +291,46 @@ Tensor & detach_(Tensor & self) {
   return self;
 }
 
+Tensor variable_data(const Tensor& self) noexcept {
+  TORCH_CHECK(self.defined(), "cannot call variable_data() on undefined tensor");
+  auto self_impl_copy = self.unsafeGetTensorImpl()->shallow_copy_and_detach(
+    /*version_counter=*/0,
+    /*allow_tensor_metadata_change=*/false);
+  self_impl_copy->set_autograd_meta(nullptr);
+  return at::Tensor(self_impl_copy);
+}
+
+Tensor tensor_data(const Tensor& self) noexcept {
+  TORCH_CHECK(self.defined(), "cannot call tensor_data() on undefined tensor");
+  auto self_impl_copy = self.unsafeGetTensorImpl()->shallow_copy_and_detach(
+    /*version_counter=*/self.unsafeGetTensorImpl()->version_counter(),
+    /*allow_tensor_metadata_change=*/self.unsafeGetTensorImpl()->allow_tensor_metadata_change());
+  return at::Tensor(self_impl_copy);
+}
+
+// View Variables
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+bool is_view(const Tensor& self) noexcept {
+  if (torch::autograd::impl::get_autograd_meta(self)) {
+    return torch::autograd::impl::get_autograd_meta(self)->is_view_;
+  } else {
+    return false;
+  }
+}
+
+const Tensor& base(const Tensor& self) {
+  if (self.is_view()) {
+    // is_view() implies get_autograd_meta()
+    auto diff_view_meta = static_cast<torch::autograd::DifferentiableViewMeta*>(torch::autograd::impl::get_autograd_meta(self));
+    return diff_view_meta->base_;
+  } else {
+    throw std::runtime_error("Can't get base of non-view Variable");
+  }
+}
+
+
+
 }  // namespace VariableType
 
 }} // namespace torch::autograd

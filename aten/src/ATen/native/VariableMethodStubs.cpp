@@ -32,5 +32,21 @@ Tensor& requires_grad_(Tensor& self, bool _requires_grad) {
   AT_ERROR("requires_grad_ is not implemented for Tensor");
 }
 
+Tensor tensor_data(const Tensor& self) {
+  AT_ERROR("tensor_data is not implemented for Tensor");
+}
+
+Tensor variable_data(const Tensor& self) {
+  AT_ERROR("variable_data is not implemented for Tensor");
+}
+
+bool is_view(const Tensor& self) {
+  AT_ERROR("is_view is not implemented for Tensor");
+}
+
+Tensor base(const Tensor& self) {
+  AT_ERROR("base is not implemented for Tensor");
+}
+
 } // namespace native
 } // namespace at

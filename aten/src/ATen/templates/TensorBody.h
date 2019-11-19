@@ -435,29 +435,6 @@ class CAFFE2_API Tensor {
     return func(*this, std::forward<Args>(params)...);
   }
 
-  /// NOTE: This is similar to the legacy `.data()` function on `Variable`, and is intended
-  /// to be used from functions that need to access the `Variable`'s equivalent `Tensor`
-  /// (i.e. `Tensor` that shares the same storage and tensor metadata with the `Variable`).
-  ///
-  /// One notable difference with the legacy `.data()` function is that changes to the
-  /// returned `Tensor`'s tensor metadata (e.g. sizes / strides / storage / storage_offset)
-  /// will not update the original `Variable`, due to the fact that this function
-  /// shallow-copies the `Variable`'s underlying TensorImpl.
-  at::Tensor tensor_data() const noexcept;
-
-  /// NOTE: `var.variable_data()` in C++ has the same semantics as `tensor.data`
-  /// in Python, which create a new `Variable` that shares the same storage and
-  /// tensor metadata with the original `Variable`, but with a completely new
-  /// autograd history.
-  ///
-  /// NOTE: If we change the tensor metadata (e.g. sizes / strides /
-  /// storage / storage_offset) of a variable created from `var.variable_data()`, those
-  /// changes will not update the original variable `var`. In `.variable_data()`, we set
-  /// `allow_tensor_metadata_change_` to false to make such changes explicitly illegal,
-  /// in order to prevent users from changing metadata of `var.variable_data()`
-  /// and expecting the original variable `var` to also be updated.
-  at::Tensor variable_data() const noexcept;
-
   // Gradient Node and Edges
   //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -493,16 +470,6 @@ public:
 
   // Remove hook at given position
   void remove_hook(unsigned pos) const;
-
-  // View Variables
-  //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-  /// Returns true if this `Variable` is a view of another `Variable`.
-  bool is_view() const noexcept;
-
-  /// Returns the `Variable` that this `Variable` is a view of. If this
-  /// `Variable` is not a view, throw a `std::runtime_error`.
-  const Tensor& base() const;
 
   // Miscellaneous
   //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

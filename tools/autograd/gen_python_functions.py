@@ -36,6 +36,7 @@ SKIP_PYTHON_BINDINGS = [
     'set_quantizer_',  # return types not supported yet
     'set_data',
     '.*_overrideable',  # overrideable functions for backend extension
+    'tensor_data', 'variable_data', 'is_view', 'base',  # variable stuff
     'data', 'is_leaf', 'output_nr', '_version', 'requires_grad_'
 ]
 
