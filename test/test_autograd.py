@@ -4308,6 +4308,15 @@ def run_grad_and_gradgrad_checks(test_case, name, test_name, apply_method, outpu
 def run_functional_checks(test_case, test_name, name, apply_fn, run_grad_checks,
                           f_args_variable, f_args_tensor):
     output_variable = apply_fn(*f_args_variable)
+    f_args_meta = []
+
+    for arg in f_args_variable:
+        f_args_meta.append(torch.empty_meta(arg.size(), dtype=arg.dtype, device=arg.device))
+    output_meta = apply_fn(*f_args_meta)
+    test_case.assertEqual(output_variable.shape, output_meta.shape)
+    test_case.assertEqual(output_variable.stride(), output_meta.stride())
+    test_case.assertEqual(output_variable.dtype, output_meta.dtype)
+    test_case.assertEqual(output_variable.device, output_meta.device)
 
     if run_grad_checks:
         run_grad_and_gradgrad_checks(test_case, name, test_name, apply_fn,

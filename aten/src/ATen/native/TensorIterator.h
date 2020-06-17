@@ -403,6 +403,9 @@ protected:
 
   // From TensorIteratorConfig
   bool is_reduction_ = false;
+
+  /// Set by populate_operands(), says if we're handling meta tensors
+  bool is_meta_ = false;
 };
 
 class CAFFE2_API TensorIteratorConfig final {

@@ -300,7 +300,11 @@ void TensorIterator::allocate_outputs() {
       if ((requires_channels_last_output_ && ndim() == 4) ||
           (requires_channels_last_3d_output_ && ndim() == 5)) {
         auto tensor_shape = invert_perm(shape_);
-        op.tensor = at::empty(tensor_shape, op.options());
+        if (is_meta_) {
+          op.tensor = at::empty_meta(tensor_shape, op.options());
+        } else {
+          op.tensor = at::empty(tensor_shape, op.options());
+        }
         if (requires_channels_last_output_) {
           op.tensor.unsafeGetTensorImpl()->empty_tensor_restride(MemoryFormat::ChannelsLast);
         } else {
@@ -325,12 +329,17 @@ void TensorIterator::allocate_outputs() {
           // can just return contiguous output
           // it is faster because it avoids allocating 0 size tensor and
           // resizing and restriding it
-          op.tensor = at::empty(tensor_shape, op.options());
+          if (is_meta_) {
+            op.tensor = at::empty_meta(tensor_shape, op.options());
+          } else {
+            op.tensor = at::empty(tensor_shape, op.options());
+          }
         } else {
           auto tensor_stride = invert_perm(op.stride_bytes);
           for (int dim = 0; dim < ndim(); dim++) {
             tensor_stride[dim] /= element_size;
           }
+          TORCH_INTERNAL_ASSERT(!is_meta_, "NYI");
           op.tensor =
               at::empty_strided(tensor_shape, tensor_stride, op.options());
         }
@@ -752,6 +761,9 @@ TensorIterator TensorIterator::reduce_op(Tensor& out1, Tensor& out2, const Tenso
 void TensorIterator::populate_operands(TensorIteratorConfig& config) {
   for (int i = 0; i < config.tensors_.size(); i++) {
     operands_.emplace_back(std::move(config.tensors_[i]));
+    if (operands_[i].tensor.is_meta()) {
+      is_meta_ = true;
+    }
   }
   num_outputs_ = config.num_outputs_;
 }
@@ -775,6 +787,10 @@ void TensorIterator::mark_outputs() {
 
 void TensorIterator::compute_mem_overlaps(const TensorIteratorConfig& config) {
   if (!config.check_mem_overlap_) {
+    return;
+  }
+  if (is_meta_) {
+    // We don't have pointer addresses, cannot check for overlap!
     return;
   }
   for (int i = 0; i < num_outputs_; i++) {
@@ -1026,7 +1042,9 @@ bool TensorIterator::fast_set_up(const TensorIteratorConfig& config) {
 }
 
 FastSetupType TensorIterator::compute_fast_setup_type(const TensorIteratorConfig& config) {
-  if (is_reduction_ || !all_ops_same_shape_) {
+  // Exclude is_meta_ so I don't have to add support for is_meta_ style
+  // allocations in the fastpath
+  if (is_reduction_ || !all_ops_same_shape_ || is_meta_) {
     return FastSetupType::NONE;
   }
 
@@ -1103,22 +1121,24 @@ void TensorIterator::build(TensorIteratorConfig& config) {
     // allocate the output tensor if it's not provided
     allocate_outputs();
     // coalesce adjacent dimensions when possible
-    coalesce_dimensions();
+    if (!is_meta_) coalesce_dimensions();
   }
   // perform name inference
   propagate_names_to_outputs();
 
-  for (auto& op : operands_) {
-    TORCH_INTERNAL_ASSERT(op.tensor.defined());
-    op.data = op.tensor.data_ptr();
-  }
+  if (!is_meta_) {
+    for (auto& op : operands_) {
+      TORCH_INTERNAL_ASSERT(op.tensor.defined());
+      op.data = op.tensor.data_ptr();
+    }
 
-  // zero out offsets
-  // If the tensor is a scalar, we leave room for it
-  // So index translations in reduction can access
-  // a valid value for the offset
-  int64_t ndim_offsets = (ndim() ? ndim() : 1);
-  view_offsets_ = DimVector(ndim_offsets, 0);
+    // zero out offsets
+    // If the tensor is a scalar, we leave room for it
+    // So index translations in reduction can access
+    // a valid value for the offset
+    int64_t ndim_offsets = (ndim() ? ndim() : 1);
+    view_offsets_ = DimVector(ndim_offsets, 0);
+  }
 }
 
 SplitUntil32Bit TensorIterator::with_32bit_indexing() const {

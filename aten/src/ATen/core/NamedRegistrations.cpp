@@ -4,6 +4,12 @@
 
 using torch::CppFunction;
 
+// TODO: put this in right file
+TORCH_LIBRARY_IMPL(_, Meta, m) {
+  // TODO: give correct error message
+  m.fallback(CppFunction::makeNamedNotSupported());
+}
+
 TORCH_LIBRARY_IMPL(_, Named, m) {
   m.fallback(CppFunction::makeNamedNotSupported());
 }
