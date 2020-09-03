@@ -208,7 +208,7 @@ public:
    * need to be observed with RecordFunction.
    */
   inline bool shouldRecord(DispatchKey dispatch_key) const {
-    return dispatch_key != DispatchKey::BackendSelect;
+    return dispatch_key != DispatchKey::BackendSelect && dispatch_key != DispatchKey::DeviceGuard;
   }
 
 private:
