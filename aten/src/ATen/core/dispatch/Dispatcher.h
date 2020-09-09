@@ -344,31 +344,6 @@ inline Return Dispatcher::callWithDispatchKey(const TypedOperatorHandle<Return(A
   TORCH_INTERNAL_ASSERT_DEBUG_ONLY(!c10::isAliasDispatchKey(dispatchKey));
   const KernelFunction& kernel = op.operatorIterator_->op.lookup(dispatchKey);
 
-#ifndef PYTORCH_DISABLE_PER_OP_PROFILING
-  // Check if we need to run callbacks registered with RecordFunction
-  // If true and callbacks need inputs, we box the arguments and pass
-  // them into the callbacks and also into the kernel call
-
-  // Note: for perf reasons we wouldn't want to pass arguments into
-  // the function call or prematurely box them
-  at::RecordFunction guard(at::RecordScope::FUNCTION);
-  if (C10_UNLIKELY(guard.active)) {
-    if (shouldRecord(dispatchKey) && op.operatorIterator_->op.isObserved()) {
-      int64_t seq_num = -1;
-      // Setting sequence number in the Autograd case to associate
-      // the forward range with the coresponding Autograd's node
-      if (isIncludedInAlias(dispatchKey, DispatchKey::Autograd) && at::GradMode::is_enabled()) {
-        seq_num = at::sequence_number::peek();
-      }
-      if (guard.needs_inputs) {
-        torch::jit::Stack stack = impl::BoxedKernelWrapper<Return(Args...)>::boxArgs(args...);
-        guard.before(op.schema().name(), stack, seq_num);
-      } else {
-        guard.before(op.schema().name(), seq_num);
-      }
-    }
-  }
-#endif  // PYTORCH_DISABLE_PER_OP_PROFILING
   return kernel.template call<Return, Args...>(op, std::forward<Args>(args)...);
 }
 
@@ -402,23 +377,6 @@ inline void Dispatcher::callBoxed(const OperatorHandle& op, Stack* stack) const 
   auto dispatchKey = entry.dispatchKeyExtractor().getDispatchKeyBoxed(stack);
   const auto& kernel = entry.lookup(dispatchKey);
 
-#ifndef PYTORCH_DISABLE_PER_OP_PROFILING
-  // using already existing stack to record function execution in observers
-  at::RecordFunction guard(at::RecordScope::FUNCTION);
-  if (C10_UNLIKELY(guard.active)) {
-    if (shouldRecord(dispatchKey) && entry.isObserved()) {
-      int64_t seq_num = -1;
-      if (isIncludedInAlias(dispatchKey, DispatchKey::Autograd) && at::GradMode::is_enabled()) {
-        seq_num = at::sequence_number::peek();
-      }
-      if (guard.needs_inputs) {
-        guard.before(op.schema().name(), *stack, seq_num);
-      } else {
-        guard.before(op.schema().name(), seq_num);
-      }
-    }
-  }
-#endif  // PYTORCH_DISABLE_PER_OP_PROFILING
   kernel.callBoxed(op, stack);
 }
 
