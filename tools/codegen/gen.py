@@ -492,7 +492,7 @@ DispatchKeySet _dk_set = DispatchKeySet(options.computeDispatchKey()) | c10::det
             assert_never(target)
     return go
 
-def compute_device_guard(*, target: Target) -> Callable[[NativeFunction], Optional[str]]:
+def compute_device_guard(*, index: int, target: Target) -> Callable[[NativeFunction], Optional[str]]:
     @with_native_function
     def go(f: NativeFunction) -> Optional[str]:
         name = legacy_dispatcher.name(f.func)
@@ -535,9 +535,9 @@ def compute_device_guard(*, target: Target) -> Callable[[NativeFunction], Option
             # TODO: factor out the idiom for redispatching
             return f"""\
 // aten::{f.func}
-{legacy_dispatcher_returns_type} {name}({', '.join(a.str_with_default() for a in legacy_dispatcher_args)}) {{
+{legacy_dispatcher_returns_type} {name}{index}({', '.join(a.str_with_default() for a in legacy_dispatcher_args)}) {{
   {guard}
-  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::DeviceGuard);
+  c10::impl::ExcludeDispatchKeyGuard guard(c10::DispatchKey::DeviceGuard{index});
   static auto op = c10::Dispatcher::singleton()
     .findSchemaOrThrow("aten::{f.func.name.name}", "{f.func.name.overload_name}")
     .typed<{dispatcher_returns_type} ({', '.join(a.type for a in dispatcher_args)})>();
@@ -550,9 +550,9 @@ def compute_device_guard(*, target: Target) -> Callable[[NativeFunction], Option
             elif local.use_c10_dispatcher() is UseC10Dispatcher.full:
                 return f"""m.impl("aten::{f.func.name}",
           c10::impl::hacky_wrapper_for_legacy_signatures<{dispatcher_returns_type} ({', '.join(a.type for a in dispatcher_args)})>(
-            TORCH_FN({name})));"""
+            TORCH_FN({name}{index})));"""
             else:
-                return f"""m.impl_UNBOXED("aten::{f.func.name}", {name});"""
+                return f"""m.impl_UNBOXED("aten::{f.func.name}", {name}{index});"""
         elif target is Target.DECLARATION:
             raise AssertionError()
         else:
@@ -1097,11 +1097,30 @@ def main() -> None:
         'backend_select_function_registrations':
             list(mapMaybe(compute_backend_select(target=Target.REGISTRATION), native_functions)),
     })
+
+
+    def device_guard_register(index: int) -> str:
+        return CodeTemplate("""
+TORCH_LIBRARY_IMPL(_, DeviceGuard${index}, m) {
+  // TODO: proper fallback
+  m.fallback(torch::CppFunction::makeFallthrough());
+}
+
+${device_guard_function_definitions}
+
+TORCH_LIBRARY_IMPL(aten, DeviceGuard${index}, m) {
+  ${device_guard_function_registrations};
+}
+""").substitute({
+            'index': index,
+            'device_guard_function_definitions':
+                list(mapMaybe(compute_device_guard(index=index, target=Target.DEFINITION), native_functions)),
+            'device_guard_function_registrations':
+                list(mapMaybe(compute_device_guard(index=index, target=Target.REGISTRATION), native_functions)),
+        })
+
     cpu_fm.write('DeviceGuardRegister.cpp', lambda: {
-        'device_guard_function_definitions':
-            list(mapMaybe(compute_device_guard(target=Target.DEFINITION), native_functions)),
-        'device_guard_function_registrations':
-            list(mapMaybe(compute_device_guard(target=Target.REGISTRATION), native_functions)),
+        'device_guard_stuff': list(device_guard_register(i + 1) for i in range(7)),
     })
 
     if options.force_schema_registration:

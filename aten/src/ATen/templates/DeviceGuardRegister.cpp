@@ -10,16 +10,7 @@ namespace at {
 
 namespace {
 
-TORCH_LIBRARY_IMPL(_, DeviceGuard, m) {
-  // TODO: proper fallback
-  m.fallback(torch::CppFunction::makeFallthrough());
-}
-
-${device_guard_function_definitions}
-
-TORCH_LIBRARY_IMPL(aten, DeviceGuard, m) {
-  ${device_guard_function_registrations};
-}
+${device_guard_stuff}
 
 } // namespace
 }

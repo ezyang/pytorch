@@ -257,7 +257,13 @@ enum class DispatchKey : uint8_t {
   // for a usage example
   TESTING_ONLY_GenericMode,
 
-  DeviceGuard,
+  DeviceGuard1,
+  DeviceGuard2,
+  DeviceGuard3,
+  DeviceGuard4,
+  DeviceGuard5,
+  DeviceGuard6,
+  DeviceGuard7,
 
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ FIN ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
   NumDispatchKeys, // Sentinel, end of runtime keys.
