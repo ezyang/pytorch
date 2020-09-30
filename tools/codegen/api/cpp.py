@@ -191,16 +191,29 @@ def argument(a: Union[Argument, TensorOptionsArguments, ThisArgument]) -> CppArg
     else:
         assert_never(a)
 
-def group_arguments(
-    func: FunctionSchema, *, method: bool = False
-) -> Sequence[Union[Argument, TensorOptionsArguments, ThisArgument]]:
-    args: List[Union[Argument, ThisArgument, TensorOptionsArguments]] = []
+class GatherArgumentsResult(NamedTuple):
+    arguments: Sequence[Union[Argument, ThisArgument], ...]
+    gathered_arguments: Optional[Sequence[Union[Argument, TensorOptionsArguments, ThisArgument], ...]]
+
+def gather_arguments(
+    func: FunctionSchema, *, method: bool
+) -> GatherArgumentsResult:
+    args: List[Union[Argument, ThisArgument]] = []
+    gathered_args: List[Union[Argument, ThisArgument, TensorOptionsArguments]] = []
+
     args.extend(func.out_arguments)
+    gathered_args.extend(func.out_arguments)
 
     if method:
-        args.extend(ThisArgument(a) if a.name == "self" else a for a in func.arguments)
+        func_arguments = [ThisArgument(a) if a.name == "self" else a for a in func.arguments]
     else:
-        args.extend(func.arguments)
+        func_arguments = func.arguments
+
+    args.extend(func_arguments)
+    gathered_args.extend(func_arguments)
+
+    args.extend(func.kwarg_only_arguments)
+    has_gathered_args = False
 
     # group up arguments for tensor options
 
@@ -220,7 +233,8 @@ def group_arguments(
             # And the next len(predicates) arguments look like TensorOptions arguments
             if all(p(a) for p, a in zip(predicates, func.kwarg_only_arguments[i : i + len(predicates)])):
                 # Group them together as one argument
-                args.append(TensorOptionsArguments(
+                has_gathered_args = True
+                gathered_args.append(TensorOptionsArguments(
                     dtype=func.kwarg_only_arguments[i],
                     layout=func.kwarg_only_arguments[i + 1],
                     device=func.kwarg_only_arguments[i + 2],
@@ -228,11 +242,16 @@ def group_arguments(
                 ))
                 i += len(predicates)
                 continue
-        args.append(func.kwarg_only_arguments[i])
+        gathered_args.append(func.kwarg_only_arguments[i])
         i += 1
 
-    return args
+    if has_gathered_args:
+        return GatheredArgumentsResult(args, gathered_args)
+    else:
+        return GatheredArgumentsResult(args, None)
 
+"""
 # Convert arguments to C++ API form
-def arguments(func: FunctionSchema, *, method: bool = False) -> Sequence[CppArgument]:
-    return list(map(argument, group_arguments(func, method=method)))
+def arguments(func: FunctionSchema, *, method: bool, gathered: bool) -> Sequence[CppArgument]:
+    return list(map(argument, group_arguments(func, method=method, gathered=gathered)))
+"""
