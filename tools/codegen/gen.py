@@ -2,7 +2,7 @@ import os
 import contextlib
 import textwrap
 import itertools
-from typing import List, Dict, Optional, Iterator, Tuple, Set, Callable, Any, TypeVar, Union, Sequence
+from typing import List, Dict, Optional, Iterator, Tuple, Set, Callable, Any, TypeVar, Union, Sequence, Iterable
 import yaml
 from enum import Enum
 from collections import OrderedDict, defaultdict
@@ -17,6 +17,7 @@ from tools.codegen.api.types import *
 import tools.codegen.api.cpp as cpp
 import tools.codegen.api.dispatcher as dispatcher
 import tools.codegen.api.native as native
+import tools.codegen.api.meta as meta
 import tools.codegen.local as local
 
 try:
@@ -101,25 +102,30 @@ S = TypeVar('S')
 def with_native_function(func: Callable[[NativeFunction], T]) -> Callable[[NativeFunction], T]:
     @functools.wraps(func)
     def wrapper(f: NativeFunction) -> T:
-        with context(f'in {f.loc}:\n  {f.func}'):
-            with local.parametrize(
-                use_c10_dispatcher=f.use_c10_dispatcher,
-            ):
-                return func(f)
+        with native_function_manager(f):
+            return func(f)
     return wrapper
+
+@contextlib.contextmanager
+def native_function_manager(f: NativeFunction) -> Iterator[None]:
+    with context(f'in {f.loc}:\n  {f.func}'):
+        with local.parametrize(
+            use_c10_dispatcher=f.use_c10_dispatcher,
+        ):
+            yield
 
 # These two functions purposely return generators in analogy to map()
 # so that you don't mix up when you need to list() them
 
 # Map over function that may return None; omit Nones from output sequence
-def mapMaybe(func: Callable[[T], Optional[S]], xs: Sequence[T]) -> Iterator[S]:
+def mapMaybe(func: Callable[[T], Optional[S]], xs: Iterable[T]) -> Iterator[S]:
     for x in xs:
         r = func(x)
         if r is not None:
             yield r
 
 # Map over function that returns sequences and cat them all together
-def concatMap(func: Callable[[T], Sequence[S]], xs: Sequence[T]) -> Iterator[S]:
+def concatMap(func: Callable[[T], Sequence[S]], xs: Iterable[T]) -> Iterator[S]:
     for x in xs:
         for r in func(x):
             yield r
@@ -192,10 +198,16 @@ def compute_type_method(
     # def() invocations (for schema registration); do not generate
     # any impl() invocations for, e.g., catch-all kernels
     def_only: bool = False
-) -> Callable[[NativeFunction], Optional[str]]:
+) -> Callable[[NativeFunctionGroup], List[str]]:
 
     if def_only:
         assert target is Target.REGISTRATION and dispatch is None
+
+    def qualify_type_name(name: str) -> str:
+        if dispatch is None or dispatch == 'Math' or dispatch == 'DefaultBackend':
+            return f'TypeDefault::{name}'
+        else:
+            return f'{dispatch}Type::{name}'
 
     @with_native_function
     def func(f: NativeFunction) -> Optional[str]:
@@ -280,10 +292,7 @@ def compute_type_method(
         elif target is Target.REGISTRATION:
             dispatcher_sig = DispatcherSignature.from_schema(f.func)
 
-            if dispatch is None or dispatch == 'Math' or dispatch == 'DefaultBackend':
-                type_name = f'TypeDefault::{name}'
-            else:
-                type_name = f'{dispatch}Type::{name}'
+            type_name = qualify_type_name(name)
 
             # def registration only happens in TypeDefault
             def_registration = ""
@@ -321,7 +330,100 @@ def compute_type_method(
         else:
             assert_never(target)
 
-    return func
+    def structured_func(g: NativeFunctionGroup) -> List[str]:
+        assert g.out is not None
+
+        # Illegal to not have dispatch for structured kernels
+        with native_function_manager(g.out):
+            assert g.out.dispatch is not None, "dispatch on structured kernels currently mandatory"
+
+            # Skip if we're generating for an unsupported dispatch key
+            if dispatch is not None and dispatch not in g.out.dispatch:
+                return []
+            # Only TypeDefault generation we do is registration
+            if dispatch is None and target is not Target.REGISTRATION:
+                return []
+
+            functional_func = g.out.func.signature()
+            functional_sig = DispatcherSignature.from_schema(functional_func)
+            meta_name = meta.name(functional_func)
+
+            # This is a little abusive; this assumes that the functionalization
+            # transformation ALWAYS refers to valid arguments in the original
+            # signature
+            functional_exprs = ', '.join(e.expr for e in functional_sig.exprs())
+
+        @with_native_function
+        def subfunc(f: NativeFunction) -> str:
+            k = f.func.kind()
+            sig = DispatcherSignature.from_schema(f.func)
+
+            if target is Target.DECLARATION:
+                # Not necessary!  Only TypeDefault is actually used, see
+                # https://github.com/pytorch/pytorch/issues/46319
+                return ""
+            elif target is Target.DEFINITION:
+                device_guard = ''
+                assert dispatch is not None
+                assert g.out is not None  # sigh
+                assert g.out.dispatch is not None
+
+                out_impl_name = f"at::native::{g.out.dispatch[dispatch]}"
+
+                # TODO: work a little harder to generate fresh names here
+                # TODO: less praying that I picked the right argument names
+
+                if k is SchemaKind.functional:
+                    out_expr = "result"
+                    prologue = "auto result = tensor_from_meta(meta_result);"
+                elif k is SchemaKind.inplace:
+                    out_expr = "self"
+                    prologue = "// TODO: consistency check assert"
+                elif k is SchemaKind.out:
+                    # TODO: generalize this for multi-out
+                    assert len(f.func.out_arguments) == 1, "multi-out structured not supported yet"
+                    # TODO: naughtily leaning on some codegen invariants....
+                    out_expr = f.func.out_arguments[0].name
+                    prologue = f"""
+// TODO: add a consistency check for meta_result
+{out_expr}.resize_(meta_result.sizes);
+"""
+
+                return f"""\
+{sig.defn()} {{
+    {device_guard}
+    auto meta_result = meta::{meta_name}({functional_exprs});
+    {prologue}
+    {out_impl_name}({out_expr}, {functional_exprs});
+    return {out_expr};
+}}
+"""
+
+            elif target is Target.REGISTRATION:
+                if dispatch is None:
+                    return f'm.def({cpp_string(str(f.func))});'
+                else:
+                    type_name = qualify_type_name(sig.name())
+                    return f'm.impl("{f.func.name}", TORCH_FN({type_name}));'
+            else:
+                assert_never(target)
+
+        rs = []
+        rs.append(subfunc(g.out))
+        if g.functional is not None:
+            rs.append(subfunc(g.functional))
+        if g.inplace is not None:
+            rs.append(subfunc(g.inplace))
+
+        return rs
+
+    def group_func(g: NativeFunctionGroup) -> List[str]:
+        if g.structured():
+            return structured_func(g)
+        else:
+            return list(mapMaybe(func, g.functions()))
+
+    return group_func
 
 # Generates Function.cpp and Function.h.  These files provide the
 # functional public C++ API, and the scaffolding to call into
@@ -453,6 +555,15 @@ def compute_native_function_declaration(f: NativeFunction) -> List[str]:
         rs.append(f"CAFFE2_API {returns_type} {n}({', '.join(map(lambda a: a.str_with_default(), args))});")
 
     return rs
+
+def compute_meta_function_declaration(g: NativeFunctionGroup) -> str:
+    assert g.out is not None
+    with native_function_manager(g.out):
+        sig = g.signature()
+        name = meta.name(sig)
+        returns_type = meta.returns_type(sig.returns)
+        args = meta.arguments(sig)
+        return f"CAFFE2_API {returns_type} {name}({', '.join(map(str, args))});"
 
 # Generates BackendSelectRegister.cpp, a series of kernels which provide
 # specialized computation of dispatch key for operator signatures which cannot
@@ -937,9 +1048,6 @@ def main() -> None:
         assert f.func.kind() not in d
         d[f.func.kind()] = f
     grouped_native_functions = list(map(NativeFunctionGroup.from_dict, pre_grouped_native_functions.values()))
-    # NB: At the moment, grouped_native_functions isn't used by anything,
-    # this code lives here to help potential future consumers; for a live
-    # example see https://github.com/pytorch/pytorch/pull/45277
 
     template_dir = os.path.join(options.source_path, "templates")
 
@@ -993,9 +1101,9 @@ def main() -> None:
         fm.write_with_template(f'{dispatch}Type.h', h_template, lambda: {
             'Type': f'{dispatch}Type',
             'extra_cuda_headers': extra_cuda_headers if 'CUDA' in dispatch else '',  # TODO: remove this
-            'type_derived_method_declarations': list(mapMaybe(
+            'type_derived_method_declarations': list(concatMap(
                 compute_type_method(dispatch, target=Target.DECLARATION, op_registration_whitelist=op_registration_whitelist),
-                native_functions
+                grouped_native_functions
             )),
         })
         fm.write_with_template(f'{dispatch}Type.cpp', cpp_template, lambda: {
@@ -1011,50 +1119,50 @@ def main() -> None:
                 '#include <ATen/LegacyTHFunctionsCUDA.h>' if dispatch == "CUDA" else
                 '',
             'Backend': dispatch,
-            'type_derived_method_definitions': list(mapMaybe(
+            'type_derived_method_definitions': list(concatMap(
                 compute_type_method(dispatch, target=Target.DEFINITION, op_registration_whitelist=op_registration_whitelist),
-                native_functions
+                grouped_native_functions
             )),
-            'function_registrations': list(mapMaybe(
+            'function_registrations': list(concatMap(
                 compute_type_method(
                     dispatch, target=Target.REGISTRATION, op_registration_whitelist=op_registration_whitelist),
-                native_functions)),
+                grouped_native_functions)),
         })
         del fm
 
     cpu_fm.write('TypeDefault.h', lambda: {
         'type_method_declarations':
-        list(mapMaybe(
+        list(concatMap(
             compute_type_method(None, target=Target.DECLARATION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)) +
-        list(mapMaybe(
+            grouped_native_functions)) +
+        list(concatMap(
             compute_type_method('Math', target=Target.DECLARATION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)),
+            grouped_native_functions)),
 
     })
     cpu_fm.write('TypeDefault.cpp', lambda: {
         'type_method_definitions':
-        list(mapMaybe(
+        list(concatMap(
             compute_type_method(None, target=Target.DEFINITION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)) +
-        list(mapMaybe(
+            grouped_native_functions)) +
+        list(concatMap(
             compute_type_method('Math', target=Target.DEFINITION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)) +
-        list(mapMaybe(
+            grouped_native_functions)) +
+        list(concatMap(
             compute_type_method('DefaultBackend', target=Target.DEFINITION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)),
+            grouped_native_functions)),
 
-        'function_registrations': list(mapMaybe(
+        'function_registrations': list(concatMap(
             compute_type_method(None, target=Target.REGISTRATION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)),
+            grouped_native_functions)),
 
-        'default_backend_function_registrations': list(mapMaybe(
+        'default_backend_function_registrations': list(concatMap(
             compute_type_method('DefaultBackend', target=Target.REGISTRATION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)),
+            grouped_native_functions)),
 
-        'math_function_registrations': list(mapMaybe(
+        'math_function_registrations': list(concatMap(
             compute_type_method('Math', target=Target.REGISTRATION, op_registration_whitelist=op_registration_whitelist),
-            native_functions)),
+            grouped_native_functions)),
     })
     cpu_fm.write('Functions.h', lambda: {
         'function_declarations': list(mapMaybe(compute_function(target=Target.DECLARATION), native_functions)),
@@ -1074,6 +1182,11 @@ def main() -> None:
     cpu_fm.write('NativeFunctions.h', lambda: {
         'native_function_declarations': list(concatMap(compute_native_function_declaration, native_functions)),
     })
+    cpu_fm.write('MetaFunctions.h', lambda: {
+        'declarations':
+            list(mapMaybe(compute_meta_function_declaration,
+                          filter(lambda g: g.structured(), grouped_native_functions))),
+    })
     cpu_fm.write('BackendSelectRegister.cpp', lambda: {
         'backend_select_method_definitions':
             list(mapMaybe(compute_backend_select(target=Target.DEFINITION), native_functions)),
@@ -1083,9 +1196,9 @@ def main() -> None:
 
     if options.force_schema_registration:
         def computeSchemaRegister() -> Dict[str, object]:
-            schema_registrations = list(mapMaybe(
+            schema_registrations = list(concatMap(
                 compute_type_method(None, target=Target.REGISTRATION, op_registration_whitelist=None, def_only=True),
-                native_functions))
+                grouped_native_functions))
             return {
                 'schema_registrations': schema_registrations,
             }
