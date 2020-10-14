@@ -229,6 +229,65 @@ struct BoxedKernelWrapper<
   }
 };
 
+template <class T1, class T2, class T3>
+struct BoxedKernelWrapper<
+  at::Tensor&(T1, T2, T3, at::Tensor&),
+  std::enable_if_t<can_box_all<T1, T2, T3>::value, void>
+> {
+  static at::Tensor& call(
+    KernelFunction::InternalBoxedKernelFunction* boxed_kernel_func,
+    OperatorKernel* functor,
+    const OperatorHandle& opHandle,
+    T1 x1,
+    T2 x2,
+    T3 x3,
+    at::Tensor& outArg
+  ) {
+    torch::jit::Stack stack;
+    stack.reserve(1 + 3);
+    torch::jit::push(stack, std::forward<T1>(x1), std::forward<T2>(x2), std::forward<T3>(x3));
+    torch::jit::push_one(stack, outArg);
+    (*boxed_kernel_func)(functor, opHandle, &stack);
+    TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+      stack.size() == 1,
+      "Boxed kernel was expected to return a single value on the stack, ",
+      "but instead returned ", stack.size(), " values."
+    );
+
+    return outArg;
+  }
+};
+
+template <class T1, class T2, class T3, class T4>
+struct BoxedKernelWrapper<
+  at::Tensor&(T1, T2, T3, T4, at::Tensor&),
+  std::enable_if_t<can_box_all<T1, T2, T3, T4>::value, void>
+> {
+  static at::Tensor& call(
+    KernelFunction::InternalBoxedKernelFunction* boxed_kernel_func,
+    OperatorKernel* functor,
+    const OperatorHandle& opHandle,
+    T1 x1,
+    T2 x2,
+    T3 x3,
+    T4 x4,
+    at::Tensor& outArg
+  ) {
+    torch::jit::Stack stack;
+    stack.reserve(1 + 4);
+    torch::jit::push(stack, std::forward<T1>(x1), std::forward<T2>(x2), std::forward<T3>(x3), std::forward<T4>(x4));
+    torch::jit::push_one(stack, outArg);
+    (*boxed_kernel_func)(functor, opHandle, &stack);
+    TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+      stack.size() == 1,
+      "Boxed kernel was expected to return a single value on the stack, ",
+      "but instead returned ", stack.size(), " values."
+    );
+
+    return outArg;
+  }
+};
+
 //
 // 4. signatures returning a tuple of Tensor references, and taking the same
 // number of Tensor refs as their initial arguments.
