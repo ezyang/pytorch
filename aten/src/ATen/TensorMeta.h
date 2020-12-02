@@ -40,7 +40,7 @@ namespace impl {
 //      ... do the actual implementation ...
 //    }
 //
-#define TORCH_IMPL_FUNC(name) void name::impl
+#define TORCH_IMPL_FUNC(name) void structured_##name::impl
 
 // Base class for all structured kernel classes.  The set_output virtual
 // method is varied depending whether or not the operator is

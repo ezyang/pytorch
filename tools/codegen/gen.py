@@ -280,14 +280,19 @@ class RegisterDispatchKey:
 
             k = f.func.kind()
             sig = NativeSignature.from_schema(f.func)
+            # sig_name use here is not semantics preserving: the wrapper here
+            # also takes care of device guard where previous native:: function
+            # did not.  But I cannot be bothered to add another wrapper function
+            # to restore this functionality
+            sig_name = g.out.dispatch[self.dispatch_key] if self.dispatch_key != 'Meta' else sig.name()
 
             if self.target is Target.DEFINITION:
                 if self.dispatch_key == 'Meta':
-                    class_name = f"{meta.name(g)}_meta_{k.name}"
+                    class_name = f"structured_{meta.name(g)}_meta_{k.name}"
                     parent_class_name = f"at::meta::{meta.name(g)}"
                 else:
-                    class_name = f"{g.out.dispatch[self.dispatch_key]}_{k.name}"
-                    parent_class_name = f"at::native::{g.out.dispatch[self.dispatch_key]}"
+                    class_name = f"structured_{g.out.dispatch[self.dispatch_key]}_{k.name}"
+                    parent_class_name = f"at::native::structured_{g.out.dispatch[self.dispatch_key]}"
                 if k is SchemaKind.functional:
                     # TODO: devirtualize these calls
                     if self.dispatch_key == "Meta":
@@ -376,7 +381,7 @@ struct {class_name} final : public {parent_class_name} {{
     std::array<{output_type}, {len(f.func.returns)}> outputs_;
 }};
 
-{sig.defn()} {{
+{sig.defn(name=sig_name)} {{
     {device_guard}
     {class_name} op{ctor_exprs};
     op.meta({functional_exprs});
@@ -387,9 +392,9 @@ struct {class_name} final : public {parent_class_name} {{
 
             elif self.target is Target.REGISTRATION:
                 if local.use_c10_dispatcher() is UseC10Dispatcher.full:
-                    payload = f'TORCH_FN({sig.name()})'
+                    payload = f'TORCH_FN(static_cast<{sig.ptr_type()}>(&{sig_name}))'
                 else:
-                    payload = f'torch::CppFunction::makeUnboxedOnly({sig.name()})'
+                    payload = f'torch::CppFunction::makeUnboxedOnly(static_cast<{sig.ptr_type()}>(&{sig_name}))'
                 return f'm.impl("{f.func.name}", {payload});'
             else:
                 assert_never(self.target)
@@ -603,23 +608,31 @@ def compute_native_function_declaration(g: Union[StructuredNativeFunctions, Nati
     if isinstance(g, StructuredNativeFunctions):
         # only out has dispatch
         meta_name = meta.name(g)
-        f = g.out
         rs = []
         seen = set()
-        for k, n in f.dispatch.items():
+        out_args = native.arguments(g.out.func)
+        for k, n in g.out.dispatch.items():
             if n in seen:
                 continue
-            seen.add(n)
-            returns_type = native.returns_type(f.func.returns)
-            args = native.arguments(f.func)
             if not is_structured_dispatch_key(k):
-                rs.append(f"CAFFE2_API {returns_type} {n}({', '.join(a.str_with_default() for a in args)});")
-            else:
-                rs.append(f"""\
-struct CAFFE2_API {n} : public at::meta::{meta_name} {{
-    void impl({', '.join(a.str_with_default() for a in args)});
+                continue
+            seen.add(n)
+            rs.append(f"""\
+struct CAFFE2_API structured_{n} : public at::meta::{meta_name} {{
+    void impl({', '.join(a.str_with_default() for a in out_args)});
 }};
 """)
+
+        seen = set()
+        for f in g.functions():
+            returns_type = native.returns_type(f.func.returns)
+            args = native.arguments(f.func)
+            for k, n in f.dispatch.items():
+                if n in seen:
+                    continue
+                seen.add(n)
+                rs.append(f"CAFFE2_API {returns_type} {n}({', '.join(a.str_with_default() for a in args)});")
+
         return rs
 
     else:

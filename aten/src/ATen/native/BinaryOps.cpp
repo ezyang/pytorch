@@ -10,8 +10,6 @@
 
 #include <torch/library.h>
 
-#if 0
-
 namespace at {
 namespace meta {
 
@@ -28,7 +26,7 @@ TORCH_META_FUNC(add, Tensor) (
      .promote_inputs_to_common_dtype(true)
      .cast_common_dtype_to_outputs(true)
      .enforce_safe_casting_to_output(true));
-  alpha_check(iter.dtype(), alpha);
+  native::alpha_check(dtype(), alpha);
 }
 
 } // namespace meta
@@ -84,8 +82,8 @@ static Tensor wrapped_scalar_tensor(Scalar scalar) {
 TORCH_IMPL_FUNC(add_out) (
   Tensor& result, const Tensor& self, const Tensor& other, Scalar alpha
 ) {
-  add_stub(iter.device_type(), iter, alpha);
-  TORCH_INTERNAL_ASSERT(result.scalar_type() == iter.output().dtype());
+  add_stub(device_type(), *this, alpha);
+  TORCH_INTERNAL_ASSERT(result.scalar_type() == output().dtype());
 }
 
 Tensor& add_relu_impl(
@@ -1104,5 +1102,3 @@ Tensor& ldexp_(Tensor& self, const Tensor& other) {
 
 } // namespace native
 } // namespace at
-
-#endif
