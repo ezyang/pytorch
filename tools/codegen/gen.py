@@ -280,11 +280,6 @@ class RegisterDispatchKey:
 
             k = f.func.kind()
             sig = NativeSignature.from_schema(f.func)
-            # sig_name use here is not semantics preserving: the wrapper here
-            # also takes care of device guard where previous native:: function
-            # did not.  But I cannot be bothered to add another wrapper function
-            # to restore this functionality
-            sig_name = g.out.dispatch[self.dispatch_key] if self.dispatch_key != 'Meta' else sig.name()
 
             if self.target is Target.DEFINITION:
                 if self.dispatch_key == 'Meta':
@@ -381,7 +376,7 @@ struct {class_name} final : public {parent_class_name} {{
     std::array<{output_type}, {len(f.func.returns)}> outputs_;
 }};
 
-{sig.defn(name=sig_name)} {{
+{sig.defn()} {{
     {device_guard}
     {class_name} op{ctor_exprs};
     op.meta({functional_exprs});
@@ -392,9 +387,9 @@ struct {class_name} final : public {parent_class_name} {{
 
             elif self.target is Target.REGISTRATION:
                 if local.use_c10_dispatcher() is UseC10Dispatcher.full:
-                    payload = f'TORCH_FN(static_cast<{sig.ptr_type()}>(&{sig_name}))'
+                    payload = f'TORCH_FN({sig.name()})'
                 else:
-                    payload = f'torch::CppFunction::makeUnboxedOnly(static_cast<{sig.ptr_type()}>(&{sig_name}))'
+                    payload = f'torch::CppFunction::makeUnboxedOnly({sig.name()})'
                 return f'm.impl("{f.func.name}", {payload});'
             else:
                 assert_never(self.target)
@@ -629,6 +624,8 @@ struct CAFFE2_API structured_{n} : public at::meta::{meta_name} {{
             args = native.arguments(f.func)
             for k, n in f.dispatch.items():
                 if n in seen:
+                    continue
+                if is_structured_dispatch_key(k):
                     continue
                 seen.add(n)
                 rs.append(f"CAFFE2_API {returns_type} {n}({', '.join(a.str_with_default() for a in args)});")

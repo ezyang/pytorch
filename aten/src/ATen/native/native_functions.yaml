@@ -370,6 +370,7 @@
   structured_delegate: add.out
   variants: function, method
   dispatch:
+    CPU, CUDA: add
     SparseCPU, SparseCUDA: add_sparse
     MkldnnCPU: mkldnn_add
 
@@ -378,6 +379,7 @@
   variants: method
   structured_delegate: add.out
   dispatch:
+    CPU, CUDA: add_
     SparseCPU, SparseCUDA: add_sparse_
     MkldnnCPU: mkldnn_add_
 

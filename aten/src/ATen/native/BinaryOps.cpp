@@ -458,12 +458,15 @@ static Tensor wrapped_scalar_tensor_and_check_convert(Scalar scalar, Tensor tens
   return wrapped_scalar_tensor(scalar);
 }
 
+// TODO: Make this structured to undo the perf regression from native:: removal
+// in call here
+
 Tensor add(const Tensor& self, Scalar other, Scalar alpha) {
-  return native::add(self, wrapped_scalar_tensor(other), alpha);
+  return at::add(self, wrapped_scalar_tensor(other), alpha);
 }
 
 Tensor& add_(Tensor& self, Scalar other, Scalar alpha) {
-  return native::add_(self, wrapped_scalar_tensor(other), alpha);
+  return self.add_(wrapped_scalar_tensor(other), alpha);
 }
 
 Tensor remainder(const Tensor& self, Scalar other) {
