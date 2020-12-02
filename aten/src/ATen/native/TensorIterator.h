@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ATen/ATen.h>
 #include <c10/util/FunctionRef.h>
 #include <c10/util/SmallVector.h>
 #include <c10/util/TypeCast.h>
