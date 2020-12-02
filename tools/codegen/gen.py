@@ -605,12 +605,17 @@ def compute_native_function_declaration(g: Union[StructuredNativeFunctions, Nati
         meta_name = meta.name(g)
         f = g.out
         rs = []
-        # TODO: test that there aren't name collisions within functions
-        # that share name
-        for n in set(f.dispatch.values()):
+        seen = set()
+        for k, n in f.dispatch.items():
+            if n in seen:
+                continue
+            seen.add(n)
             returns_type = native.returns_type(f.func.returns)
             args = native.arguments(f.func)
-            rs.append(f"""\
+            if not is_structured_dispatch_key(k):
+                rs.append(f"CAFFE2_API {returns_type} {n}({', '.join(a.str_with_default() for a in args)});")
+            else:
+                rs.append(f"""\
 struct CAFFE2_API {n} : public at::meta::{meta_name} {{
     void impl({', '.join(a.str_with_default() for a in args)});
 }};

@@ -10,7 +10,7 @@ namespace impl {
 
 // From https://stackoverflow.com/questions/11761703/overloading-macro-on-number-of-arguments
 #define TORCH_META_FUNC1(name) void name::meta
-#define TORCH_META_FUNC2(name, overload) void name::meta ## _ ## overload
+#define TORCH_META_FUNC2(name, overload) void name##_##overload::meta
 #define GET_MACRO(_1,_2,NAME,...) NAME
 
 // Use this to define the prototype for a meta function.  This takes one

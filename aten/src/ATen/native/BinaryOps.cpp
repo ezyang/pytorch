@@ -10,6 +10,8 @@
 
 #include <torch/library.h>
 
+#if 0
+
 namespace at {
 namespace meta {
 
@@ -1102,3 +1104,5 @@ Tensor& ldexp_(Tensor& self, const Tensor& other) {
 
 } // namespace native
 } // namespace at
+
+#endif
