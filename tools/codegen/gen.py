@@ -305,12 +305,21 @@ if (strides.empty()) {
 }
 """
                     else:
-                        set_output_impl = """
-if (strides.empty()) {
-    outputs_[output_idx] = at::empty(sizes, options);
-} else {
-    outputs_[output_idx] = at::empty_strided(sizes, strides, options);
-}
+                        expanded_topts = "optTypeMetaToScalarType(options.dtype_opt()), options.layout_opt(), options.device_opt(), options.pinned_memory_opt()"
+                        if self.dispatch_key == "CPU":
+                            empty_impl = "at::native::empty_cpu"
+                            empty_strided_impl = "at::native::empty_strided_cpu"
+                        elif self.dispatch_key == "CUDA":
+                            empty_impl = "at::native::empty_cuda"
+                            empty_strided_impl = "at::native::empty_strided_cuda"
+                        else:
+                            raise AssertionError("unsupported dispatch key")
+                        set_output_impl = f"""
+if (strides.empty()) {{
+    outputs_[output_idx] = {empty_impl}(sizes, {expanded_topts});
+}} else {{
+    outputs_[output_idx] = {empty_strided_impl}(sizes, strides, {expanded_topts});
+}}
 """
                     assert len(f.func.returns) == 1, "multi-return not supported yet"
                     out_expr = "op.outputs_[0]"
