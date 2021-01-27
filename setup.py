@@ -963,6 +963,9 @@ if DEBUG:
         extra_compile_args += ['-O0', '-g']
         extra_link_args += ['-O0', '-g']
 
+extra_compile_args += ['-g', '-fno-omit-frame-pointer']
+extra_link_args += ['-g', '-fno-omit-frame-pointer']
+
 
 def make_relative_rpath(path):
     if IS_DARWIN:

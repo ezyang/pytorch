@@ -1,6 +1,8 @@
 #include "torch/csrc/python_headers.h"
 #include <sys/types.h>
 
+#include <valgrind/callgrind.h>
+
 #ifndef _MSC_VER
 #include <sys/socket.h>
 #endif
@@ -48,6 +50,22 @@
 
 #define WITH_NUMPY_IMPORT_ARRAY
 #include "torch/csrc/utils/numpy_stub.h"
+
+bool _valgrind_supported_platform() {
+    #if defined(NVALGRIND)
+    return false;
+    #else
+    return true;
+    #endif
+}
+
+void _valgrind_toggle() {
+    #if defined(NVALGRIND)
+    TORCH_CHECK(false, "Valgrind is not supported.");
+    #else
+    CALLGRIND_TOGGLE_COLLECT;
+    #endif
+}
 
 namespace py = pybind11;
 
@@ -637,6 +655,10 @@ static PyObject* initModule() {
 #ifdef USE_CUDA
   torch::nn::init__THCUNN(module);
 #endif
+
+  py::module pymod = py::handle(module).cast<py::module>();
+  pymod.def("_valgrind_supported_platform", &_valgrind_supported_platform);
+  pymod.def("_valgrind_toggle", &_valgrind_toggle);
 
   return module;
   END_HANDLE_TH_ERRORS
