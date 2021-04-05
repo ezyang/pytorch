@@ -26,6 +26,13 @@ Tensor empty_override(IntArrayRef size, c10::optional<ScalarType> dtype, c10::op
   return get_tensor(scalarTypeToTypeMeta(dtype_or_default(dtype)), size);
 }
 
+Tensor sigmoid_override(const Tensor& t) {
+  pybind11::gil_scoped_acquire gil;
+  auto main = py::module::import("__main__");
+  auto r = main.attr("foo")();
+  return r.cast<Tensor>();
+}
+
 Tensor& add_out_override(const Tensor & a, const Tensor & b , const Scalar& c, Tensor & out) {
   test_int = 1;
   return out;
@@ -55,6 +62,7 @@ std::tuple<Tensor,Tensor,Tensor> fake_convolution_backward(
 TORCH_LIBRARY_IMPL(aten, MSNPU, m) {
   m.impl("empty.memory_format",                empty_override);
   m.impl("add.out",                            add_out_override);
+  m.impl("sigmoid",                            sigmoid_override);
   m.impl("convolution_overrideable",           fake_convolution);
   m.impl("convolution_backward_overrideable",  fake_convolution_backward);
 }
