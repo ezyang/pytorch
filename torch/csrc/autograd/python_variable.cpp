@@ -27,6 +27,7 @@
 #include <torch/csrc/utils/tensor_new.h>
 #include <torch/csrc/jit/frontend/tracer.h>
 #include <ATen/NamedTensorUtils.h>
+#include <c10/util/DeadlockDetection.h>
 
 #include <ATen/ATen.h>
 #include <pybind11/pybind11.h>
@@ -628,6 +629,16 @@ PyObject *THPVariable_get_base(THPVariable *self, void *unused)
   Py_RETURN_NONE;
   END_HANDLE_TH_ERRORS
 }
+
+#ifndef USE_DEPLOY
+struct ConcretePythonGILHooks : public c10::impl::PythonGILHooks {
+  bool check_python_gil() const override {
+    return PyGILState_Check();
+  };
+};
+ConcretePythonGILHooks python_gil_hooks;
+static c10::impl::PythonGILHooksRegisterer python_gil_hooks_registerer(&python_gil_hooks);
+#endif
 
 PyObject *THPVariable_get_shape(THPVariable *self, void *unused)
 {

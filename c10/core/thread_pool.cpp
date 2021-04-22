@@ -1,4 +1,5 @@
 #include <c10/core/thread_pool.h>
+#include <c10/util/DeadlockDetection.h>
 
 namespace c10 {
 
@@ -56,6 +57,7 @@ bool ThreadPool::inThreadPool() const {
 }
 
 void ThreadPool::run(std::function<void()> func) {
+  TORCH_ASSERT_NO_GIL_WITHOUT_PYTHON_DEP()
   if (threads_.size() == 0) {
     throw std::runtime_error("No threads to run a task");
   }
