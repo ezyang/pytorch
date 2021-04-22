@@ -442,6 +442,10 @@ class intrusive_ptr final {
     return result;
   }
 
+  static intrusive_ptr steal_from_new(TTarget* raw_ptr) {
+    return intrusive_ptr(raw_ptr);
+  }
+
   /**
    * Turn a new instance of TTarget (e.g., literally allocated
    * using new TTarget(...) into an intrusive_ptr.  If possible,
