@@ -31,9 +31,14 @@ static void noop_decref_fn(const PyInterpreter*, PyObject*) {
   // no-op
 }
 
+static void noop_shallow_copy_fn(const PyInterpreter*, TensorImpl*, TensorImpl*) {
+  // no-op
+}
+
 void PyInterpreter::disarm() noexcept {
   name_fn_ = &noop_name_fn;
   decref_fn_ = &noop_decref_fn;
+  shallow_copy_fn_ = &noop_shallow_copy_fn;
 }
 
 } // namespace impl
@@ -108,7 +113,7 @@ TensorImpl::TensorImpl(
       numel_(0),
       data_type_(data_type),
       device_opt_(storage_.device()),
-      key_set_(key_set) {
+      key_set_(key_set.remove(DispatchKey::FuncTorchPython)) {
   init_bitfields();
   // Inference tensor doesn't have version counter.
   if (!is_inference_tensor()) {
@@ -152,6 +157,8 @@ TensorImpl::TensorImpl(
   DispatchKey k = key_set.highestPriorityBackendTypeId();
 
   key_set = key_set | getAutocastRelatedKeySetFromBackend(k);
+
+  key_set = key_set.remove(DispatchKey::FuncTorchPython);
 
   // Inference tensor doesn't have autograd related keys.
   if (inference_mode) {
@@ -472,6 +479,9 @@ c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
       /*allow_tensor_metadata_change=*/allow_tensor_metadata_change);
   impl->refresh_numel();
   impl->refresh_contiguous();
+  if (key_set_.has(DispatchKey::FuncTorchPython)) {
+    pyobj_interpreter_.load(std::memory_order_acquire)->shallow_copy(const_cast<TensorImpl*>(this), impl.get());
+  }
   return impl;
 }
 
@@ -490,6 +500,9 @@ c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
       /*allow_tensor_metadata_change=*/allow_tensor_metadata_change);
   impl->refresh_numel();
   impl->refresh_contiguous();
+  if (key_set_.has(DispatchKey::FuncTorchPython)) {
+    pyobj_interpreter_.load(std::memory_order_acquire)->shallow_copy(const_cast<TensorImpl*>(this), impl.get());
+  }
   return impl;
 }
 
@@ -502,7 +515,7 @@ void TensorImpl::copy_tensor_metadata_except_version_counter(
   dest_impl->storage_offset_ = src_impl->storage_offset_;
   dest_impl->data_type_ = src_impl->data_type_;
   dest_impl->device_opt_ = src_impl->device_opt_;
-  dest_impl->key_set_ = src_impl->key_set_;
+  dest_impl->key_set_ = src_impl->key_set_.remove(DispatchKey::FuncTorchPython);
   dest_impl->is_contiguous_ = src_impl->is_contiguous_;
   dest_impl->has_contiguity_ = src_impl->has_contiguity_;
   dest_impl->is_channels_last_contiguous_ =

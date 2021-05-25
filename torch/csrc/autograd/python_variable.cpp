@@ -29,6 +29,10 @@
 #include <ATen/NamedTensorUtils.h>
 #include <c10/util/DeadlockDetection.h>
 
+#include <torch/library.h>
+#include <torch/csrc/jit/python/pybind_utils.h>
+
+
 #include <ATen/ATen.h>
 #include <pybind11/pybind11.h>
 
@@ -76,12 +80,15 @@ void concrete_decref_fn(const c10::impl::PyInterpreter* self, PyObject* pyobj) {
   Py_DECREF(pyobj);
 };
 
+void concrete_shallow_copy_fn(const c10::impl::PyInterpreter*, c10::TensorImpl* before, c10::TensorImpl* after);
+
 class PyInterpreterHolder {
  public:
   PyInterpreterHolder()
       : impl_(new c10::impl::PyInterpreter(
             &concrete_name_fn,
-            &concrete_decref_fn)) {}
+            &concrete_decref_fn,
+            &concrete_shallow_copy_fn)) {}
   // NB: intentionally leaks the memory
   ~PyInterpreterHolder() {
     impl_->disarm();
@@ -120,17 +127,22 @@ static const char* VOLATILE_WARNING =
 // It's ALWAYS safe (albeit slower) to call this with MAYBE_UNINITIALIZED.
 static PyObject* THPVariable_NewWithVar(
     PyTypeObject* type,
-    Variable var,
+    Variable _var,
     c10::impl::PyInterpreterStatus status) {
   PyObject* obj = type->tp_alloc(type, 0);
   if (obj) {
     auto v = (THPVariable*) obj;
     // TODO: named constructor to avoid default initialization
     new (&v->cdata) MaybeOwned<Variable>();
-    v->cdata = MaybeOwned<Variable>::owned(std::move(var));
-    // cannot use var as it is moved out of
-    THPVariable_Unpack(v).unsafeGetTensorImpl()->init_pyobj(
-        self_interpreter.get(), obj, status);
+    v->cdata = MaybeOwned<Variable>::owned(std::move(_var));
+    const auto& var = THPVariable_Unpack(v);
+    var.unsafeGetTensorImpl()->init_pyobj(self_interpreter.get(), obj, status);
+    // Quick short circuits for well known type that definitely doesn't have
+    // torch function
+    if (type != (PyTypeObject*)THPVariableClass && torch::check_has_torch_function(obj, /*ignore_enabled*/ true)) {
+      std::cerr << "nontrivial python\n";
+      var.unsafeGetTensorImpl()->set_nontrivial_python(true);
+    }
   }
   return obj;
 }
@@ -319,7 +331,8 @@ static PyObject* THPVariable_make_subclass(PyObject* _ignored, PyObject* args, P
     throw torch::TypeError("cls must be a type (got %s)", Py_TYPE(cls)->tp_name);
   }
   auto data =
-      r.tensor(1).detach(); // creates a fresh Tensor (DEFINITELY_UNINITIALIZED)
+      // fuck me with a pogo stick
+      r.tensor(1).detach().alias(); // creates a fresh Tensor (DEFINITELY_UNINITIALIZED)
   // We set `data`'s `allow_tensor_metadata_change` to true here, because we want to
   // allow the following use case for backward compatibility:
   //
@@ -330,16 +343,24 @@ static PyObject* THPVariable_make_subclass(PyObject* _ignored, PyObject* args, P
   // rnn.flatten_parameters()
   // ```
   data.unsafeGetTensorImpl()->set_allow_tensor_metadata_change(true);
-  auto var = data.set_requires_grad(r.toBool(2));
+  data.set_requires_grad(r.toBool(2));
   return THPVariable_NewWithVar(
       (PyTypeObject*)cls,
-      std::move(var),
+      std::move(data),
       c10::impl::PyInterpreterStatus::DEFINITELY_UNINITIALIZED);
   END_HANDLE_TH_ERRORS
 }
 
 typedef PyObject *(*getter)(PyObject *, void *);
 typedef int (*setter)(PyObject *, PyObject *, void *);
+
+PyObject *THPVariable_get_nontrivial_python(THPVariable *self, void *unused)
+{
+  HANDLE_TH_ERRORS
+  const auto& var = THPVariable_Unpack(self);
+  return torch::autograd::utils::wrap(var.unsafeGetTensorImpl()->is_nontrivial_python());
+  END_HANDLE_TH_ERRORS
+}
 
 PyObject *THPVariable_get_T(THPVariable *self, void *unused)
 {
@@ -901,6 +922,7 @@ int THPVariable_set_imag(THPVariable* self, THPVariable *imag, void *unused)
 // manually. TODO: make declarable in native_functions
 // NOLINTNEXTLINE(modernize-avoid-c-arrays,cppcoreguidelines-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables)
 static struct PyGetSetDef THPVariable_properties[] = {
+  {"_nontrivial_python", (getter)THPVariable_get_nontrivial_python, nullptr, nullptr, nullptr},
   {"T", (getter)THPVariable_get_T, nullptr, nullptr, nullptr},
   {"_cdata", (getter)THPVariable_get_cdata, nullptr, nullptr, nullptr},
   {"_version", (getter)THPVariable_get_version, nullptr, nullptr, nullptr},
@@ -1416,3 +1438,171 @@ bool THPVariable_initModule(PyObject *module)
   torch::autograd::initTensorImplConversion(module);
   return true;
 }
+
+namespace {
+
+py::object pyIdentity(py::object x) {
+  return x;
+}
+template <class T>
+py::tuple vectorToPyTuple(
+    const std::vector<T>& data,
+    std::function<py::object(T)> converter) {
+  PyObject* tuple = PyTuple_New(data.size());
+  if (!tuple)
+    throw std::runtime_error("Unable to allocate memory for Python tuple");
+  for (unsigned int i = 0; i < data.size(); i++) {
+    PyObject* num = converter(data[i]).ptr();
+    if (!num) {
+      Py_DECREF(tuple);
+      throw std::runtime_error("Unable to allocate memory for Python tuple");
+    }
+    Py_INCREF(
+        num); // todo: dunno?? Need it to fix segfaults, but probably not right
+    PyTuple_SET_ITEM(tuple, i, num);
+  }
+  return py::cast<py::tuple>(tuple);
+}
+
+bool isPythonTensor(const Tensor& tensor) {
+  return tensor.unsafeGetTensorImpl()->key_set().has(c10::DispatchKey::FuncTorchPython);
+}
+
+void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
+  const auto& schema = op.schema();
+  const auto num_returns = schema.returns().size();
+
+  const auto num_arguments = schema.arguments().size();
+  auto arguments = torch::jit::pop(*stack, num_arguments);
+
+  py::gil_scoped_acquire g;
+
+  std::vector<py::object> pyArgs;
+  std::vector<py::handle> pyTensorArgs;  // non-owning!!
+  for (unsigned idx = 0; idx < arguments.size(); idx++) {
+    auto& ivalue = arguments[idx];
+    // Search for Tensors (as they may have the torch functions we need)
+    if (ivalue.isTensor()) {
+      auto t = std::move(ivalue).toTensor();
+      py::object pyTensor = py::cast(t);
+      if (isPythonTensor(t)) {
+        pyTensorArgs.push_back(pyTensor);
+      }
+      pyArgs.push_back(std::move(pyTensor));
+    } else {
+      if (ivalue.isList()) {
+        auto l = std::move(ivalue).toList();
+        py::list pyL;
+        for (int64_t jdx = 0; jdx < l.size(); jdx++) {
+          auto nv = l.extract(jdx);
+          if (nv.isTensor()) {
+            auto t = std::move(nv).toTensor();
+            py::object pyTensor = py::cast(t);
+            if (isPythonTensor(t)) {
+              pyTensorArgs.push_back(pyTensor);
+            }
+            pyL.append(std::move(pyTensor));
+          } else {
+            pyL.append(torch::jit::toPyObject(std::move(nv)));
+          }
+        }
+        pyArgs.push_back(pyL);
+      } else {
+        pyArgs.push_back(torch::jit::toPyObject(ivalue));
+      }
+    }
+  }
+  // TODO: unconditionally looking at only the first tensor argument is wrong
+  // see https://github.com/zou3519/functorch/issues/39
+  TORCH_INTERNAL_ASSERT(pyTensorArgs.size() > 0);
+  py::object torch_function =
+      PyObject_FastGetAttrString(pyTensorArgs[0].ptr(), (char *)"__torch_function__");
+
+  // TODO: do this correctly (__torch_function__ types only)
+  // and just build it as we go along
+  py::tuple py_types = py::cast<py::tuple>(
+      vectorToPyTuple<py::object>(pyArgs, [](py::object x) -> py::object {
+        return py::reinterpret_borrow<py::object>(PyObject_Type(x.ptr()));
+      }));
+
+  py::dict kwargs;
+
+  std::string func_name = op.operator_name().name;
+  std::string delimiter = "aten::";
+  func_name = func_name.substr(func_name.find(delimiter) + delimiter.size());
+
+  py::object torch_api_function =
+      PyObject_FastGetAttrString(THPVariableClass, (char*)func_name.c_str());
+
+  torch_api_function = py::str(op.operator_name().name);
+  // TODO: this is dumb af; just build the tuple directly as we're going
+  auto pyTupleArgs = vectorToPyTuple<py::object>(pyArgs, pyIdentity);
+
+  auto out = PyObject_CallFunctionObjArgs(
+      torch_function.ptr(),
+      torch_api_function.ptr(),
+      py_types.ptr(),
+      pyTupleArgs.ptr(),
+      kwargs.ptr(),
+      0);
+  if (out == nullptr) {
+    throw python_error();
+  }
+  // TODO: don't do this, test what the return type is
+  py::list outs = py::cast<py::list>(out);
+  TORCH_INTERNAL_ASSERT(outs.size() == op.schema().returns().size());
+  for (unsigned idx = 0; idx < outs.size(); idx++) {
+    torch::jit::push(stack, torch::jit::toTypeInferredIValue(outs[idx]));
+  }
+}
+
+TORCH_LIBRARY_IMPL(_, FuncTorchPython, m) {
+  m.fallback(torch::CppFunction::makeFromBoxedFunction<&pythonFallBack>());
+}
+
+void concrete_shallow_copy_fn(const c10::impl::PyInterpreter*, c10::TensorImpl* before, c10::TensorImpl* after) {
+  // Invariant: it's already assumed that we have a nontrivial PyObject on
+  // before (because you shouldn't call this function if you didn't).
+  //
+  // How exactly should we implement the shallow copy here?  yolo subclass for
+  // now
+
+  pybind11::gil_scoped_acquire gil;
+
+#if 0
+  auto before_t = Tensor(before);  // TODO: fixup refcount bumps
+  auto torch_api_function = py::str("detach");
+
+  py::object torch_function =
+      PyObject_FastGetAttrString(before_t, (char *)"__torch_function__");
+  auto out = PyObject_CallFunctionObjArgs(
+      torch_function.ptr(),
+      torch_api_function.ptr(),
+      py::make_tuple().ptr(),
+      py::make_tuple().ptr(),
+      py::dict().ptr(),
+      0);
+  if (out == nullptr) {
+    throw python_error();
+  }
+#endif
+  // TODO: need non-owning accessor; don't refcount bump with Variable
+  std::cerr << "shallow copy\n";
+  Tensor before_t = Tensor(c10::intrusive_ptr<c10::TensorImpl, c10::UndefinedTensorImpl>::unsafe_reclaim_from_nonowning(before));
+  PyObject* obj = THPVariable_Wrap(before_t);
+  PyTypeObject* cls = Py_TYPE(obj);
+  // NB: discard return
+  Tensor after_t = Tensor(c10::intrusive_ptr<c10::TensorImpl, c10::UndefinedTensorImpl>::unsafe_reclaim_from_nonowning(after));
+  THPVariable_NewWithVar(
+      cls,
+      after_t,
+      c10::impl::PyInterpreterStatus::DEFINITELY_UNINITIALIZED);
+
+  PyObject* dict = PyObject_GenericGetDict(obj, nullptr);
+  PyObject* after_obj = THPVariable_Wrap(after_t);
+  PyObject_GenericSetDict(after_obj, dict, nullptr);
+  Py_DECREF(obj);
+  Py_DECREF(after_obj);
+}
+
+} // anonymous namespace

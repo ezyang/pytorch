@@ -172,13 +172,13 @@ inline bool has_torch_function_attr(PyObject* obj) {
 }
 
 namespace torch {
-auto check_has_torch_function(PyObject* obj) -> bool
+auto check_has_torch_function(PyObject* obj, bool ignore_enabled) -> bool
 {
   PyTypeObject *tp = Py_TYPE(obj);
   return (
     !THPVariable_CheckTypeExact(tp) &&
     !is_basic_python_type(tp) &&
-    torch::torch_function_enabled() &&
+    (ignore_enabled || torch::torch_function_enabled()) &&
     has_torch_function_attr(obj)
   );
 }

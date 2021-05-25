@@ -239,14 +239,17 @@ struct PyInterpreter;
 struct C10_API PyInterpreter {
   using name_sig = std::string(const PyInterpreter*);
   using decref_sig = void(const PyInterpreter*, PyObject*);
+  using shallow_copy_sig = void(const PyInterpreter*, TensorImpl* before, TensorImpl* after);
 
-  PyInterpreter(name_sig* name_fn, decref_sig* decref_fn)
-      : name_fn_(name_fn), decref_fn_(decref_fn) {}
+  PyInterpreter(name_sig* name_fn, decref_sig* decref_fn, shallow_copy_sig* shallow_copy)
+      : name_fn_(name_fn), decref_fn_(decref_fn), shallow_copy_fn_(shallow_copy) {}
 
   // For debugging purposes only
   name_sig* name_fn_;
 
   decref_sig* decref_fn_;
+
+  shallow_copy_sig* shallow_copy_fn_;
 
   // UBSAN suppression fixes: "call to function
   // (anonymous namespace)::concrete_decref_fn(c10::impl::PyInterpreter const*,
@@ -261,6 +264,10 @@ struct C10_API PyInterpreter {
   // Run Py_DECREF on a PyObject.  We DO NOT assume the GIL is held on call
   __ubsan_ignore_function__ void decref(PyObject* pyobj) const {
     return (*decref_fn_)(this, pyobj);
+  }
+
+  __ubsan_ignore_function__ void shallow_copy(TensorImpl* before, TensorImpl* after) const {
+    return (*shallow_copy_fn_)(this, before, after);
   }
 
   // Disarm this PyInterpreter, making all of its methods noops.
@@ -1284,6 +1291,18 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
     } else {
       key_set_ = key_set_.add(DispatchKey::Named);
     }
+  }
+
+  void set_nontrivial_python(bool k) {
+    if (k) {
+      key_set_ = key_set_.add(DispatchKey::FuncTorchPython);
+    } else {
+      key_set_ = key_set_.remove(DispatchKey::FuncTorchPython);
+    }
+  }
+
+  bool is_nontrivial_python() const {
+    return key_set_.has(DispatchKey::FuncTorchPython);
   }
 
   /**
