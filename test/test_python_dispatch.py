@@ -109,11 +109,15 @@ class TestPythonDispatch(TestCase):
         # $3 and $5 comes from nowhere because detach for saved variable not tracked atm
         self.assertExpectedInline('\n'.join(logs), '''\
 $0 = input('x')
-$1 = torch._ops.aten.mul($0, $0)
-$2 = input('grad_y')
-$4 = torch._ops.aten.mul($2, $3)
-$6 = torch._ops.aten.mul($2, $5)
-$7 = torch._ops.aten.add($6, $4, 1)''')
+$1 = torch._ops.aten.detach($0)
+$2 = torch._ops.aten.detach($0)
+$3 = torch._ops.aten.mul($0, $0)
+$4 = input('grad_y')
+$5 = torch._ops.aten.detach($1)
+$6 = torch._ops.aten.detach($2)
+$7 = torch._ops.aten.mul($4, $5)
+$8 = torch._ops.aten.mul($4, $6)
+$9 = torch._ops.aten.add($8, $7, 1)''')
 
     def test_out(self) -> None:
         with capture_logs() as logs:

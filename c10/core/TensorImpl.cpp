@@ -31,14 +31,14 @@ static void noop_decref_fn(const PyInterpreter*, PyObject*) {
   // no-op
 }
 
-static void noop_shallow_copy_fn(const PyInterpreter*, TensorImpl*, TensorImpl*) {
-  // no-op
+static c10::intrusive_ptr<TensorImpl> noop_detach_fn(const PyInterpreter*, const TensorImpl*) {
+  return c10::intrusive_ptr<TensorImpl>();
 }
 
 void PyInterpreter::disarm() noexcept {
   name_fn_ = &noop_name_fn;
   decref_fn_ = &noop_decref_fn;
-  shallow_copy_fn_ = &noop_shallow_copy_fn;
+  detach_fn_ = &noop_detach_fn;
 }
 
 } // namespace impl
@@ -467,6 +467,12 @@ c10::AutogradMetaInterface* TensorImpl::autograd_meta() const {
 c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
     const c10::VariableVersion& version_counter,
     bool allow_tensor_metadata_change) const {
+  if (key_set_.has(DispatchKey::FuncTorchPython)) {
+    auto r = pyobj_interpreter_.load(std::memory_order_acquire)->detach(this);
+    if (r) return r;
+    // otherwise just copy the TensorImpl and not the PyObject.  Since
+    // the interpreter is dead no one can call us out on it
+  }
   auto impl = c10::make_intrusive<TensorImpl>(
       // No need to populate Storage; copy_tensor_metadata will do it for us.
       key_set_,
@@ -479,15 +485,18 @@ c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
       /*allow_tensor_metadata_change=*/allow_tensor_metadata_change);
   impl->refresh_numel();
   impl->refresh_contiguous();
-  if (key_set_.has(DispatchKey::FuncTorchPython)) {
-    pyobj_interpreter_.load(std::memory_order_acquire)->shallow_copy(const_cast<TensorImpl*>(this), impl.get());
-  }
   return impl;
 }
 
 c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
     c10::VariableVersion&& version_counter,
     bool allow_tensor_metadata_change) const {
+  if (key_set_.has(DispatchKey::FuncTorchPython)) {
+    auto r = pyobj_interpreter_.load(std::memory_order_acquire)->detach(this);
+    if (r) return r;
+    // otherwise just copy the TensorImpl and not the PyObject.  Since
+    // the interpreter is dead no one can call us out on it
+  }
   auto impl = c10::make_intrusive<TensorImpl>(
       // No need to populate Storage; copy_tensor_metadata will do it for us.
       key_set_,
@@ -500,9 +509,6 @@ c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
       /*allow_tensor_metadata_change=*/allow_tensor_metadata_change);
   impl->refresh_numel();
   impl->refresh_contiguous();
-  if (key_set_.has(DispatchKey::FuncTorchPython)) {
-    pyobj_interpreter_.load(std::memory_order_acquire)->shallow_copy(const_cast<TensorImpl*>(this), impl.get());
-  }
   return impl;
 }
 

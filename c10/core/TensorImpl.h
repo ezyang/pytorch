@@ -239,17 +239,17 @@ struct PyInterpreter;
 struct C10_API PyInterpreter {
   using name_sig = std::string(const PyInterpreter*);
   using decref_sig = void(const PyInterpreter*, PyObject*);
-  using shallow_copy_sig = void(const PyInterpreter*, TensorImpl* before, TensorImpl* after);
+  using detach_sig = c10::intrusive_ptr<TensorImpl>(const PyInterpreter*, const TensorImpl*);
 
-  PyInterpreter(name_sig* name_fn, decref_sig* decref_fn, shallow_copy_sig* shallow_copy)
-      : name_fn_(name_fn), decref_fn_(decref_fn), shallow_copy_fn_(shallow_copy) {}
+  PyInterpreter(name_sig* name_fn, decref_sig* decref_fn, detach_sig* detach)
+      : name_fn_(name_fn), decref_fn_(decref_fn), detach_fn_(detach) {}
 
   // For debugging purposes only
   name_sig* name_fn_;
 
   decref_sig* decref_fn_;
 
-  shallow_copy_sig* shallow_copy_fn_;
+  detach_sig* detach_fn_;
 
   // UBSAN suppression fixes: "call to function
   // (anonymous namespace)::concrete_decref_fn(c10::impl::PyInterpreter const*,
@@ -266,8 +266,11 @@ struct C10_API PyInterpreter {
     return (*decref_fn_)(this, pyobj);
   }
 
-  __ubsan_ignore_function__ void shallow_copy(TensorImpl* before, TensorImpl* after) const {
-    return (*shallow_copy_fn_)(this, before, after);
+  // Perform a detach by deferring to the __torch_dispatch__ implementation of
+  // detach, which will also arrange for the PyObject to get copied in this
+  // situation
+  __ubsan_ignore_function__ c10::intrusive_ptr<TensorImpl> detach(const TensorImpl* self) const {
+    return (*detach_fn_)(this, self);
   }
 
   // Disarm this PyInterpreter, making all of its methods noops.

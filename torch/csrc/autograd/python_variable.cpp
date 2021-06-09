@@ -80,7 +80,7 @@ void concrete_decref_fn(const c10::impl::PyInterpreter* self, PyObject* pyobj) {
   Py_DECREF(pyobj);
 };
 
-void concrete_shallow_copy_fn(const c10::impl::PyInterpreter*, c10::TensorImpl* before, c10::TensorImpl* after);
+c10::intrusive_ptr<TensorImpl> concrete_detach_fn(const c10::impl::PyInterpreter*, const c10::TensorImpl* self);
 
 class PyInterpreterHolder {
  public:
@@ -88,7 +88,7 @@ class PyInterpreterHolder {
       : impl_(new c10::impl::PyInterpreter(
             &concrete_name_fn,
             &concrete_decref_fn,
-            &concrete_shallow_copy_fn)) {}
+            &concrete_detach_fn)) {}
   // NB: intentionally leaks the memory
   ~PyInterpreterHolder() {
     impl_->disarm();
@@ -1531,7 +1531,7 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
     PyTuple_SET_ITEM(args.ptr(), idx, torch::jit::toPyObject(std::move(ivalue)).release().ptr());
   }
 
-  auto out = handle_torch_function_no_python_arg_parser(
+  auto out = py::reinterpret_steal<py::object>(handle_torch_function_no_python_arg_parser(
     overloaded_args,
     args.ptr(),
     kwargs.ptr(),
@@ -1539,7 +1539,7 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
     torch_api_function.ptr(),
     module_name_str.c_str(),
     "__torch_dispatch__"
-  );
+  ));
 
   if (op.schema().returns().size() == 1) {
     torch::jit::push(stack, torch::jit::toTypeInferredIValue(out));
@@ -1556,48 +1556,33 @@ TORCH_LIBRARY_IMPL(_, FuncTorchPython, m) {
   m.fallback(torch::CppFunction::makeFromBoxedFunction<&pythonFallBack>());
 }
 
-void concrete_shallow_copy_fn(const c10::impl::PyInterpreter*, c10::TensorImpl* before, c10::TensorImpl* after) {
-  // Invariant: it's already assumed that we have a nontrivial PyObject on
-  // before (because you shouldn't call this function if you didn't).
-  //
-  // How exactly should we implement the shallow copy here?  yolo subclass for
-  // now
-
+c10::intrusive_ptr<TensorImpl> concrete_detach_fn(const c10::impl::PyInterpreter*, const c10::TensorImpl* self) {
   pybind11::gil_scoped_acquire gil;
 
-#if 0
-  auto before_t = Tensor(before);  // TODO: fixup refcount bumps
-  auto torch_api_function = py::str("detach");
+  // Setup the arguments expected for the detach call
+  std::vector<py::handle> overloaded_args;
+  // TODO: there should be a shorter way to spell this
+  // TODO: fix the constness of target
+  Tensor self_t = Tensor(c10::intrusive_ptr<c10::TensorImpl, c10::UndefinedTensorImpl>::unsafe_reclaim_from_nonowning(const_cast<c10::TensorImpl*>(self)));
+  auto self_p = py::reinterpret_steal<py::object>(THPVariable_Wrap(self_t));
+  overloaded_args.emplace_back(self_p);
+  auto args = py::reinterpret_steal<py::object>(PyTuple_New(1));
+  PyTuple_SET_ITEM(args.ptr(), 0, self_p.release().ptr());
 
-  py::object torch_function =
-      PyObject_FastGetAttrString(before_t, (char *)"__torch_function__");
-  auto out = PyObject_CallFunctionObjArgs(
-      torch_function.ptr(),
-      torch_api_function.ptr(),
-      py::make_tuple().ptr(),
-      py::make_tuple().ptr(),
-      py::dict().ptr(),
-      0);
-  if (out == nullptr) {
-    throw python_error();
-  }
-#endif
-  // TODO: need non-owning accessor; don't refcount bump with Variable
-  Tensor before_t = Tensor(c10::intrusive_ptr<c10::TensorImpl, c10::UndefinedTensorImpl>::unsafe_reclaim_from_nonowning(before));
-  PyObject* obj = THPVariable_Wrap(before_t);
-  PyTypeObject* cls = Py_TYPE(obj);
-  // NB: discard return
-  Tensor after_t = Tensor(c10::intrusive_ptr<c10::TensorImpl, c10::UndefinedTensorImpl>::unsafe_reclaim_from_nonowning(after));
-  THPVariable_NewWithVar(
-      cls,
-      after_t,
-      c10::impl::PyInterpreterStatus::DEFINITELY_UNINITIALIZED);
+  py::dict kwargs;
 
-  PyObject* dict = PyObject_GenericGetDict(obj, nullptr);
-  PyObject* after_obj = THPVariable_Wrap(after_t);
-  PyObject_GenericSetDict(after_obj, dict, nullptr);
-  Py_DECREF(obj);
-  Py_DECREF(after_obj);
+  auto out = py::reinterpret_steal<py::object>(handle_torch_function_no_python_arg_parser(
+    overloaded_args,
+    args.ptr(),
+    kwargs.ptr(),
+    "detach",
+    py::module::import("torch").attr("ops").attr("aten").attr("detach").ptr(),
+    "torch.ops.aten",
+    "__torch_dispatch__"
+  ));
+
+  const Tensor& res_t = THPVariable_Unpack(out.ptr());
+  return res_t.getIntrusivePtr();
 }
 
 } // anonymous namespace
