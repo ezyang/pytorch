@@ -1474,24 +1474,30 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
   const auto num_arguments = schema.arguments().size();
   auto arguments = torch::jit::pop(*stack, num_arguments);
 
+  // Parse the name into namespace and name (no overload_name)
+  // TODO: put this into the library
+  const auto& qualified_name = op.operator_name().name;
+  auto pos = qualified_name.find("::");
+  TORCH_INTERNAL_ASSERT(pos != std::string::npos, qualified_name);
+  // Make me some null terminated strings
+  std::string ns_str = qualified_name.substr(0, pos);
+  const char* ns = ns_str.c_str();
+  const char* func_name = qualified_name.c_str() + pos + strlen("::");
+
   // The plan: convert all the arguments back into PyObjects,
   // extracting out the tensor handles, then call
   // handle_torch_function_no_python_arg_parser
 
   py::gil_scoped_acquire g;
 
-#if 0
   std::vector<py::handle> overloaded_args;
-  py::object args = PyTuple_New(num_arguments);
+  auto args = py::reinterpret_steal<py::object>(PyTuple_New(num_arguments));
   py::dict kwargs;  // TODO: actually populate kwargs sometimes?
-  // TODO: replace namespace :: with . for better error message
-  const char* func_name = op.operator_name().name;  // TODO: include overload
   // For now, overloads get coalesced.  Might be easier for users if they get
   // overload resolution but is more complicated (need to expose separate
   // functions per overload)
-  py::handle torch_api_function = py::module::import("torch.ops");
-  const char* module_name = "torch.ops";
-#endif
+  py::handle torch_api_function = py::module::import("torch").attr("ops").attr(ns).attr(func_name);
+  std::string module_name = "torch.ops." + ns_str;
 
   std::vector<py::object> pyArgs;
   std::vector<py::handle> pyTensorArgs;  // non-owning!!
@@ -1541,16 +1547,6 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
         return py::reinterpret_borrow<py::object>(PyObject_Type(x.ptr()));
       }));
 
-  py::dict kwargs;
-
-  std::string func_name = op.operator_name().name;
-  std::string delimiter = "aten::";
-  func_name = func_name.substr(func_name.find(delimiter) + delimiter.size());
-
-  py::object torch_api_function =
-      PyObject_FastGetAttrString(THPVariableClass, (char*)func_name.c_str());
-
-  torch_api_function = py::str(op.operator_name().name);
   // TODO: this is dumb af; just build the tuple directly as we're going
   auto pyTupleArgs = vectorToPyTuple<py::object>(pyArgs, pyIdentity);
 

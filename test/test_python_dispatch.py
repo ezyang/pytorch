@@ -27,7 +27,7 @@ class LoggingTensor(torch.Tensor):
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         with torch._C.DisableTorchFunction():
-            if isinstance(func, str):
+            if hasattr(func, '__module__') and func.__module__.startswith("torch._ops."):
                 assert not kwargs
                 unwrapped_args = []
                 for a in args:
@@ -40,14 +40,14 @@ class LoggingTensor(torch.Tensor):
                             unwrapped_args.append(a)
                     else:
                         unwrapped_args.append(a)
-                r = getattr(torch.ops.aten, func.replace("aten::", ""))(*unwrapped_args)
+                r = func(*unwrapped_args)
                 if isinstance(r, torch.Tensor):
                     rs = [LoggingTensor(r)]
                 elif isinstance(r, list) or isinstance(r, tuple):
                     rs = [LoggingTensor(e) if isinstance(e, torch.Tensor) else e for e in r]
                 else:
                     rs = [r]
-                logging.getLogger("LoggingTensor").info(func, args, rs)
+                logging.getLogger("LoggingTensor").info(f"{func.__module__}.{func.__name__}", args, rs)
                 return rs
             else:
                 return func(*args, **(kwargs if kwargs else {}))
@@ -108,11 +108,11 @@ class TestPythonDispatch(TestCase):
         # $3 and $5 comes from nowhere because detach for saved variable not tracked atm
         self.assertExpectedInline('\n'.join(logs), '''\
 $0 = input('x')
-$1 = aten::mul($0, $0)
+$1 = torch._ops.aten.mul($0, $0)
 $2 = input('grad_y')
-$4 = aten::mul($2, $3)
-$6 = aten::mul($2, $5)
-$7 = aten::add($6, $4, 1)''')
+$4 = torch._ops.aten.mul($2, $3)
+$6 = torch._ops.aten.mul($2, $5)
+$7 = torch._ops.aten.add($6, $4, 1)''')
 
 if __name__ == '__main__':
     run_tests()
