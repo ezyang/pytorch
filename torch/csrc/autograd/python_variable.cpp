@@ -89,7 +89,8 @@ class PyInterpreterHolder {
       : impl_(new c10::impl::PyInterpreter(
             &concrete_name_fn,
             &concrete_decref_fn,
-            &concrete_detach_fn)) {}
+            &concrete_detach_fn,
+            &concrete_dispatch_fn)) {}
   // NB: intentionally leaks the memory
   ~PyInterpreterHolder() {
     impl_->disarm();
@@ -1449,29 +1450,6 @@ bool THPVariable_initModule(PyObject *module)
 }
 
 namespace {
-
-py::object pyIdentity(py::object x) {
-  return x;
-}
-template <class T>
-py::tuple vectorToPyTuple(
-    const std::vector<T>& data,
-    std::function<py::object(T)> converter) {
-  PyObject* tuple = PyTuple_New(data.size());
-  if (!tuple)
-    throw std::runtime_error("Unable to allocate memory for Python tuple");
-  for (unsigned int i = 0; i < data.size(); i++) {
-    PyObject* num = converter(data[i]).ptr();
-    if (!num) {
-      Py_DECREF(tuple);
-      throw std::runtime_error("Unable to allocate memory for Python tuple");
-    }
-    Py_INCREF(
-        num); // todo: dunno?? Need it to fix segfaults, but probably not right
-    PyTuple_SET_ITEM(tuple, i, num);
-  }
-  return py::cast<py::tuple>(tuple);
-}
 
 bool isPythonTensor(const Tensor& tensor) {
   return tensor.unsafeGetTensorImpl()->key_set().has(c10::DispatchKey::Python);

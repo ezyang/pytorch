@@ -109,8 +109,6 @@ enum class DispatchKey : uint8_t {
 
   NestedTensor, // lives out of tree at https://github.com/pytorch/nestedtensor
 
-  Python,
-
   // Here are reserved backends for user-defined backends, see Note [Private use
   // DispatchKey]
   // To see some example about how to use this, check out MSNPU
@@ -131,6 +129,7 @@ enum class DispatchKey : uint8_t {
   // correct backend.
   BackendSelect,
 
+  Python,
   FuncTorchPython, // See Note [Out-of-tree vmap+grad prototype]
 
   // The named dispatch key is set for any tensors with named dimensions.
