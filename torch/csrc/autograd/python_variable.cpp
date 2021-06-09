@@ -1541,11 +1541,14 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
     "__torch_dispatch__"
   );
 
-  // TODO: don't do this, test what the return type is
-  py::list outs = py::cast<py::list>(out);
-  TORCH_INTERNAL_ASSERT(outs.size() == op.schema().returns().size());
-  for (unsigned idx = 0; idx < outs.size(); idx++) {
-    torch::jit::push(stack, torch::jit::toTypeInferredIValue(outs[idx]));
+  if (op.schema().returns().size() == 1) {
+    torch::jit::push(stack, torch::jit::toTypeInferredIValue(out));
+  } else {
+    py::list outs = py::cast<py::list>(out);
+    TORCH_INTERNAL_ASSERT(outs.size() == op.schema().returns().size());
+    for (unsigned idx = 0; idx < outs.size(); idx++) {
+      torch::jit::push(stack, torch::jit::toTypeInferredIValue(outs[idx]));
+    }
   }
 }
 

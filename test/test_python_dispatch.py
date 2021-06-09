@@ -43,11 +43,11 @@ class LoggingTensor(torch.Tensor):
                 unwrapped_args.append(a)
         r = func(*unwrapped_args)
         if isinstance(r, torch.Tensor):
-            rs = [LoggingTensor(r)]
-        elif isinstance(r, list) or isinstance(r, tuple):
+            rs = LoggingTensor(r)
+        elif isinstance(r, (list, tuple)):
             rs = [LoggingTensor(e) if isinstance(e, torch.Tensor) else e for e in r]
         else:
-            rs = [r]
+            rs = r
         logging.getLogger("LoggingTensor").info(f"{func.__module__}.{func.__name__}", args, rs)
         return rs
 
@@ -75,7 +75,8 @@ class LoggingTensorHandler(logging.Handler):
 
     def emit(self, record):
         fmt_args = "(" + ", ".join(self._fmt(a) for a in record.args[0]) + ")"
-        fmt_rets = ", ".join(self._fmt(a) for a in record.args[1])
+        fmt_rets = ", ".join(self._fmt(a) for a in record.args[1]) \
+            if isinstance(record.args[1], (list, tuple)) else self._fmt(record.args[1])
         self.log_list.append(f'{fmt_rets} = {record.msg}{fmt_args}')
 
 def log_input(name: str, var: object):
