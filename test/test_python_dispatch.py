@@ -29,25 +29,25 @@ class LoggingTensor(torch.Tensor):
 
     @classmethod
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
-        assert not kwargs
-        unwrapped_args = []
-        for a in args:
-            if isinstance(a, LoggingTensor):
-                unwrapped_args.append(a.elem)
-            elif isinstance(a, torch.device):
-                if str(a) == "meta":
-                    unwrapped_args.append(torch.device("cpu"))
-                else:
-                    unwrapped_args.append(a)
+        def unwrap(e):
+            if isinstance(e, torch.Tensor):
+                return e.elem
+            elif isinstance(e, (list, tuple)):
+                return [unwrap(sub_e) for sub_e in e]
             else:
-                unwrapped_args.append(a)
-        r = func(*unwrapped_args)
-        if isinstance(r, torch.Tensor):
-            rs = LoggingTensor(r)
-        elif isinstance(r, (list, tuple)):
-            rs = [LoggingTensor(e) if isinstance(e, torch.Tensor) else e for e in r]
-        else:
-            rs = r
+                return e
+
+        def wrap(e):
+            if isinstance(e, torch.Tensor):
+                return LoggingTensor(e)
+            elif isinstance(e, (list, tuple)):
+                return [wrap(sub_e) for sub_e in e]
+            else:
+                return e
+
+        # TODO: handle kwargs
+        assert not kwargs
+        rs = wrap(func(*unwrap(args)))
         logging.getLogger("LoggingTensor").info(f"{func.__module__}.{func.__name__}", args, rs)
         return rs
 
@@ -63,7 +63,8 @@ class LoggingTensorHandler(logging.Handler):
         self.next_shortid = 0
         self.id2shortid = {}
 
-    # WARNING: not thread safe
+    # WARNING: not deterministic over multiple threads, this matters for
+    # autograd
     def _shortid(self, o: object) -> int:
         if id(o) not in self.id2shortid:
             self.id2shortid[id(o)] = self.next_shortid
