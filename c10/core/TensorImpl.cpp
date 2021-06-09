@@ -35,10 +35,15 @@ static c10::intrusive_ptr<TensorImpl> noop_detach_fn(const PyInterpreter*, const
   return c10::intrusive_ptr<TensorImpl>();
 }
 
+static void noop_dispatch_fn(const PyInterpreter*, const c10::OperatorHandle& op, torch::jit::Stack* stack) {
+  TORCH_INTERNAL_ASSERT(0);
+}
+
 void PyInterpreter::disarm() noexcept {
   name_fn_ = &noop_name_fn;
   decref_fn_ = &noop_decref_fn;
   detach_fn_ = &noop_detach_fn;
+  dispatch_fn_ = &noop_dispatch_fn;
 }
 
 } // namespace impl
@@ -113,7 +118,7 @@ TensorImpl::TensorImpl(
       numel_(0),
       data_type_(data_type),
       device_opt_(storage_.device()),
-      key_set_(key_set.remove(DispatchKey::FuncTorchPython)) {
+      key_set_(key_set.remove(DispatchKey::Python)) {
   init_bitfields();
   // Inference tensor doesn't have version counter.
   if (!is_inference_tensor()) {
@@ -158,7 +163,7 @@ TensorImpl::TensorImpl(
 
   key_set = key_set | getAutocastRelatedKeySetFromBackend(k);
 
-  key_set = key_set.remove(DispatchKey::FuncTorchPython);
+  key_set = key_set.remove(DispatchKey::Python);
 
   // Inference tensor doesn't have autograd related keys.
   if (inference_mode) {
@@ -467,7 +472,7 @@ c10::AutogradMetaInterface* TensorImpl::autograd_meta() const {
 c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
     const c10::VariableVersion& version_counter,
     bool allow_tensor_metadata_change) const {
-  if (key_set_.has(DispatchKey::FuncTorchPython)) {
+  if (key_set_.has(DispatchKey::Python)) {
     auto r = pyobj_interpreter_.load(std::memory_order_acquire)->detach(this);
     if (r) return r;
     // otherwise just copy the TensorImpl and not the PyObject.  Since
@@ -491,7 +496,7 @@ c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
 c10::intrusive_ptr<TensorImpl> TensorImpl::shallow_copy_and_detach(
     c10::VariableVersion&& version_counter,
     bool allow_tensor_metadata_change) const {
-  if (key_set_.has(DispatchKey::FuncTorchPython)) {
+  if (key_set_.has(DispatchKey::Python)) {
     auto r = pyobj_interpreter_.load(std::memory_order_acquire)->detach(this);
     if (r) return r;
     // otherwise just copy the TensorImpl and not the PyObject.  Since
@@ -521,7 +526,7 @@ void TensorImpl::copy_tensor_metadata_except_version_counter(
   dest_impl->storage_offset_ = src_impl->storage_offset_;
   dest_impl->data_type_ = src_impl->data_type_;
   dest_impl->device_opt_ = src_impl->device_opt_;
-  dest_impl->key_set_ = src_impl->key_set_.remove(DispatchKey::FuncTorchPython);
+  dest_impl->key_set_ = src_impl->key_set_.remove(DispatchKey::Python);
   dest_impl->is_contiguous_ = src_impl->is_contiguous_;
   dest_impl->has_contiguity_ = src_impl->has_contiguity_;
   dest_impl->is_channels_last_contiguous_ =

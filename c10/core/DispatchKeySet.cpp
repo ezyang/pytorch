@@ -19,6 +19,7 @@ constexpr DispatchKeySet backend_dispatch_keyset = autogradother_backends |
         DispatchKey::MLC,
         DispatchKey::HPU,
         DispatchKey::Meta,
+        DispatchKey::Python,
     });
 
 bool isBackendDispatchKey(DispatchKey t) {

@@ -81,6 +81,7 @@ void concrete_decref_fn(const c10::impl::PyInterpreter* self, PyObject* pyobj) {
 };
 
 c10::intrusive_ptr<TensorImpl> concrete_detach_fn(const c10::impl::PyInterpreter*, const c10::TensorImpl* self);
+void concrete_dispatch_fn(const c10::impl::PyInterpreter*, const c10::OperatorHandle& op, torch::jit::Stack* stack);
 
 class PyInterpreterHolder {
  public:
@@ -149,7 +150,7 @@ static PyObject* THPVariable_NewWithVar(
     // Quick short circuits for well known type that definitely doesn't have
     // torch function
     if (type != (PyTypeObject*)THPVariableClass && check_has_torch_dispatch(obj)) {
-      var.unsafeGetTensorImpl()->set_nontrivial_python(true);
+      var.unsafeGetTensorImpl()->set_python_dispatch(true);
     }
   }
   return obj;
@@ -362,11 +363,11 @@ static PyObject* THPVariable_make_subclass(PyObject* _ignored, PyObject* args, P
 typedef PyObject *(*getter)(PyObject *, void *);
 typedef int (*setter)(PyObject *, PyObject *, void *);
 
-PyObject *THPVariable_get_nontrivial_python(THPVariable *self, void *unused)
+PyObject *THPVariable_get_python_dispatch(THPVariable *self, void *unused)
 {
   HANDLE_TH_ERRORS
   const auto& var = THPVariable_Unpack(self);
-  return torch::autograd::utils::wrap(var.unsafeGetTensorImpl()->is_nontrivial_python());
+  return torch::autograd::utils::wrap(var.unsafeGetTensorImpl()->is_python_dispatch());
   END_HANDLE_TH_ERRORS
 }
 
@@ -930,7 +931,7 @@ int THPVariable_set_imag(THPVariable* self, THPVariable *imag, void *unused)
 // manually. TODO: make declarable in native_functions
 // NOLINTNEXTLINE(modernize-avoid-c-arrays,cppcoreguidelines-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables)
 static struct PyGetSetDef THPVariable_properties[] = {
-  {"_nontrivial_python", (getter)THPVariable_get_nontrivial_python, nullptr, nullptr, nullptr},
+  {"_python_dispatch", (getter)THPVariable_get_python_dispatch, nullptr, nullptr, nullptr},
   {"T", (getter)THPVariable_get_T, nullptr, nullptr, nullptr},
   {"_cdata", (getter)THPVariable_get_cdata, nullptr, nullptr, nullptr},
   {"_version", (getter)THPVariable_get_version, nullptr, nullptr, nullptr},
@@ -1473,10 +1474,10 @@ py::tuple vectorToPyTuple(
 }
 
 bool isPythonTensor(const Tensor& tensor) {
-  return tensor.unsafeGetTensorImpl()->key_set().has(c10::DispatchKey::FuncTorchPython);
+  return tensor.unsafeGetTensorImpl()->key_set().has(c10::DispatchKey::Python);
 }
 
-void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
+void concrete_dispatch_fn(const c10::impl::PyInterpreter*, const c10::OperatorHandle& op, torch::jit::Stack* stack) {
   const auto& schema = op.schema();
   const auto num_returns = schema.returns().size();
 
@@ -1550,10 +1551,6 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
       torch::jit::push(stack, torch::jit::toTypeInferredIValue(outs[idx]));
     }
   }
-}
-
-TORCH_LIBRARY_IMPL(_, FuncTorchPython, m) {
-  m.fallback(torch::CppFunction::makeFromBoxedFunction<&pythonFallBack>());
 }
 
 c10::intrusive_ptr<TensorImpl> concrete_detach_fn(const c10::impl::PyInterpreter*, const c10::TensorImpl* self) {
