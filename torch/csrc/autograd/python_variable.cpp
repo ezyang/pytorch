@@ -140,7 +140,6 @@ static PyObject* THPVariable_NewWithVar(
     // Quick short circuits for well known type that definitely doesn't have
     // torch function
     if (type != (PyTypeObject*)THPVariableClass && torch::check_has_torch_function(obj, /*ignore_enabled*/ true)) {
-      std::cerr << "nontrivial python\n";
       var.unsafeGetTensorImpl()->set_nontrivial_python(true);
     }
   }
@@ -1475,7 +1474,24 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
   const auto num_arguments = schema.arguments().size();
   auto arguments = torch::jit::pop(*stack, num_arguments);
 
+  // The plan: convert all the arguments back into PyObjects,
+  // extracting out the tensor handles, then call
+  // handle_torch_function_no_python_arg_parser
+
   py::gil_scoped_acquire g;
+
+#if 0
+  std::vector<py::handle> overloaded_args;
+  py::object args = PyTuple_New(num_arguments);
+  py::dict kwargs;  // TODO: actually populate kwargs sometimes?
+  // TODO: replace namespace :: with . for better error message
+  const char* func_name = op.operator_name().name;  // TODO: include overload
+  // For now, overloads get coalesced.  Might be easier for users if they get
+  // overload resolution but is more complicated (need to expose separate
+  // functions per overload)
+  py::handle torch_api_function = py::module::import("torch.ops");
+  const char* module_name = "torch.ops";
+#endif
 
   std::vector<py::object> pyArgs;
   std::vector<py::handle> pyTensorArgs;  // non-owning!!
@@ -1587,7 +1603,6 @@ void concrete_shallow_copy_fn(const c10::impl::PyInterpreter*, c10::TensorImpl* 
   }
 #endif
   // TODO: need non-owning accessor; don't refcount bump with Variable
-  std::cerr << "shallow copy\n";
   Tensor before_t = Tensor(c10::intrusive_ptr<c10::TensorImpl, c10::UndefinedTensorImpl>::unsafe_reclaim_from_nonowning(before));
   PyObject* obj = THPVariable_Wrap(before_t);
   PyTypeObject* cls = Py_TYPE(obj);
