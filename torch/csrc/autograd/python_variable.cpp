@@ -118,6 +118,15 @@ static const char* VOLATILE_WARNING =
     "volatile was removed and now has no effect. Use "
     "`with torch.no_grad():` instead.";
 
+bool check_has_torch_dispatch(PyObject *obj) {
+  PyTypeObject *tp = Py_TYPE(obj);
+  return (
+    !THPVariable_CheckTypeExact(tp) &&
+    // TODO: test if Python key is disabled
+    PyObject_FastGetAttrString(obj, "__torch_dispatch__").ptr() != nullptr
+  );
+}
+
 // Creates a new Python object for a Variable.  The status parameter
 // specifies what the interpreter tag status on the object is; for
 // example, if you ran check_pyobj, the return optional of this object
@@ -139,7 +148,7 @@ static PyObject* THPVariable_NewWithVar(
     var.unsafeGetTensorImpl()->init_pyobj(self_interpreter.get(), obj, status);
     // Quick short circuits for well known type that definitely doesn't have
     // torch function
-    if (type != (PyTypeObject*)THPVariableClass && torch::check_has_torch_function(obj, /*ignore_enabled*/ true)) {
+    if (type != (PyTypeObject*)THPVariableClass && check_has_torch_dispatch(obj)) {
       var.unsafeGetTensorImpl()->set_nontrivial_python(true);
     }
   }
@@ -1497,69 +1506,41 @@ void pythonFallBack(const c10::OperatorHandle& op, torch::jit::Stack* stack) {
   // overload resolution but is more complicated (need to expose separate
   // functions per overload)
   py::handle torch_api_function = py::module::import("torch").attr("ops").attr(ns).attr(func_name);
-  std::string module_name = "torch.ops." + ns_str;
+  std::string module_name_str = "torch.ops." + ns_str;
 
-  std::vector<py::object> pyArgs;
-  std::vector<py::handle> pyTensorArgs;  // non-owning!!
-  for (unsigned idx = 0; idx < arguments.size(); idx++) {
+  for (int64_t idx = 0; idx < arguments.size(); idx++) {
     auto& ivalue = arguments[idx];
     // Search for Tensors (as they may have the torch functions we need)
     if (ivalue.isTensor()) {
-      auto t = std::move(ivalue).toTensor();
-      py::object pyTensor = py::cast(t);
-      if (isPythonTensor(t)) {
-        pyTensorArgs.push_back(pyTensor);
+      const auto& tensor = ivalue.toTensor();
+      if (isPythonTensor(tensor)) {
+        overloaded_args.emplace_back(py::cast(tensor));
       }
-      pyArgs.push_back(std::move(pyTensor));
-    } else {
-      if (ivalue.isList()) {
-        auto l = std::move(ivalue).toList();
-        py::list pyL;
-        for (int64_t jdx = 0; jdx < l.size(); jdx++) {
-          auto nv = l.extract(jdx);
-          if (nv.isTensor()) {
-            auto t = std::move(nv).toTensor();
-            py::object pyTensor = py::cast(t);
-            if (isPythonTensor(t)) {
-              pyTensorArgs.push_back(pyTensor);
-            }
-            pyL.append(std::move(pyTensor));
-          } else {
-            pyL.append(torch::jit::toPyObject(std::move(nv)));
+    } else if (ivalue.isList()) {
+      const auto& list = ivalue.toListRef();
+      for (int64_t jdx = 0; jdx < list.size(); jdx++) {
+        const auto& nv = list[jdx];
+        if (nv.isTensor()) {
+          const auto& tensor = nv.toTensor();
+          if (isPythonTensor(tensor)) {
+            overloaded_args.emplace_back(py::cast(tensor));
           }
         }
-        pyArgs.push_back(pyL);
-      } else {
-        pyArgs.push_back(torch::jit::toPyObject(ivalue));
       }
     }
+    PyTuple_SET_ITEM(args.ptr(), idx, torch::jit::toPyObject(std::move(ivalue)).release().ptr());
   }
-  // TODO: unconditionally looking at only the first tensor argument is wrong
-  // see https://github.com/zou3519/functorch/issues/39
-  TORCH_INTERNAL_ASSERT(pyTensorArgs.size() > 0);
-  py::object torch_function =
-      PyObject_FastGetAttrString(pyTensorArgs[0].ptr(), (char *)"__torch_function__");
 
-  // TODO: do this correctly (__torch_function__ types only)
-  // and just build it as we go along
-  py::tuple py_types = py::cast<py::tuple>(
-      vectorToPyTuple<py::object>(pyArgs, [](py::object x) -> py::object {
-        return py::reinterpret_borrow<py::object>(PyObject_Type(x.ptr()));
-      }));
+  auto out = handle_torch_function_no_python_arg_parser(
+    overloaded_args,
+    args.ptr(),
+    kwargs.ptr(),
+    func_name,
+    torch_api_function.ptr(),
+    module_name_str.c_str(),
+    "__torch_dispatch__"
+  );
 
-  // TODO: this is dumb af; just build the tuple directly as we're going
-  auto pyTupleArgs = vectorToPyTuple<py::object>(pyArgs, pyIdentity);
-
-  auto out = PyObject_CallFunctionObjArgs(
-      torch_function.ptr(),
-      torch_api_function.ptr(),
-      py_types.ptr(),
-      pyTupleArgs.ptr(),
-      kwargs.ptr(),
-      0);
-  if (out == nullptr) {
-    throw python_error();
-  }
   // TODO: don't do this, test what the return type is
   py::list outs = py::cast<py::list>(out);
   TORCH_INTERNAL_ASSERT(outs.size() == op.schema().returns().size());

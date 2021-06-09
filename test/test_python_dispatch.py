@@ -1,5 +1,6 @@
 import torch
 from torch.testing._internal.common_utils import TestCase, run_tests
+from torch._C import _disabled_torch_function_impl
 
 from typing import Iterator, List, Dict
 import logging
@@ -24,33 +25,31 @@ class LoggingTensor(torch.Tensor):
     def __format__(self, format_spec):
         return f"LoggingTensor({self.elem})"
 
+    __torch_function__ = _disabled_torch_function_impl
+
     @classmethod
-    def __torch_function__(cls, func, types, args=(), kwargs=None):
-        with torch._C.DisableTorchFunction():
-            if hasattr(func, '__module__') and func.__module__.startswith("torch._ops."):
-                assert not kwargs
-                unwrapped_args = []
-                for a in args:
-                    if isinstance(a, LoggingTensor):
-                        unwrapped_args.append(a.elem)
-                    elif isinstance(a, torch.device):
-                        if str(a) == "meta":
-                            unwrapped_args.append(torch.device("cpu"))
-                        else:
-                            unwrapped_args.append(a)
-                    else:
-                        unwrapped_args.append(a)
-                r = func(*unwrapped_args)
-                if isinstance(r, torch.Tensor):
-                    rs = [LoggingTensor(r)]
-                elif isinstance(r, list) or isinstance(r, tuple):
-                    rs = [LoggingTensor(e) if isinstance(e, torch.Tensor) else e for e in r]
+    def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
+        assert not kwargs
+        unwrapped_args = []
+        for a in args:
+            if isinstance(a, LoggingTensor):
+                unwrapped_args.append(a.elem)
+            elif isinstance(a, torch.device):
+                if str(a) == "meta":
+                    unwrapped_args.append(torch.device("cpu"))
                 else:
-                    rs = [r]
-                logging.getLogger("LoggingTensor").info(f"{func.__module__}.{func.__name__}", args, rs)
-                return rs
+                    unwrapped_args.append(a)
             else:
-                return func(*args, **(kwargs if kwargs else {}))
+                unwrapped_args.append(a)
+        r = func(*unwrapped_args)
+        if isinstance(r, torch.Tensor):
+            rs = [LoggingTensor(r)]
+        elif isinstance(r, list) or isinstance(r, tuple):
+            rs = [LoggingTensor(e) if isinstance(e, torch.Tensor) else e for e in r]
+        else:
+            rs = [r]
+        logging.getLogger("LoggingTensor").info(f"{func.__module__}.{func.__name__}", args, rs)
+        return rs
 
 # https://stackoverflow.com/questions/36408496/python-logging-handler-to-append-to-list
 class LoggingTensorHandler(logging.Handler):
