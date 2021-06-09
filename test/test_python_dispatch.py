@@ -115,5 +115,21 @@ $4 = torch._ops.aten.mul($2, $3)
 $6 = torch._ops.aten.mul($2, $5)
 $7 = torch._ops.aten.add($6, $4, 1)''')
 
+    def test_out(self) -> None:
+        with capture_logs() as logs:
+            x = LoggingTensor(torch.ones(1))
+            y = LoggingTensor(torch.zeros(1))
+            log_input("x", x)
+            log_input("y", y)
+            torch.abs(x, out=y)
+
+        self.assertEqual(y.elem, torch.ones(1))
+        # TODO: arguably this shouldn't pass and we should complain
+        # that out isn't a kwarg
+        self.assertExpectedInline('\n'.join(logs), '''\
+$0 = input('x')
+$1 = input('y')
+$2 = torch._ops.aten.abs($0, $1)''')
+
 if __name__ == '__main__':
     run_tests()
