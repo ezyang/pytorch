@@ -18,7 +18,7 @@ from tools.codegen.model import (Argument, DispatchKey, FunctionSchema,
                                  OptionalType, SchemaKind, SelfArgument,
                                  TensorOptionsArguments, Type, Variant,
                                  assert_never, is_cuda_dispatch_key,
-                                 is_generic_dispatch_key)
+                                 is_generic_dispatch_key, Ufunc, ScalarType)
 from tools.codegen.api.types import (Binding, CppSignature, CppSignatureGroup,
                                      DispatcherSignature, NativeSignature)
 from tools.codegen.api import cpp
@@ -104,6 +104,43 @@ def parse_native_yaml(path: str) -> ParsedYaml:
         _GLOBAL_PARSE_NATIVE_YAML_CACHE[path] = ParsedYaml(rs, indices)
 
     return _GLOBAL_PARSE_NATIVE_YAML_CACHE[path]
+
+def parse_ufuncs_yaml(path: str, g_index: Dict[OperatorName, NativeFunctionsGroup]) -> List[Ufunc]:
+    with open(path, 'r') as f:
+        top = yaml.load(f, Loader=LineLoader)
+        assert isinstance(top, dict)
+
+        # parse dtypes; assumed to be in topological order
+        dtypes: Dict[str, Set[ScalarType]] = {}
+        dtypes_yaml = top.pop('dtypes')
+        assert isinstance(dtypes, dict)
+        for k, vs in dtypes_yaml.items():
+            assert isinstance(k, str)
+            assert isinstance(vs, str)
+            assert ScalarType.maybe_parse(k) is None, f"cannot redefine already existing dtype {k}"
+            dtype_set = set()
+            for v in ', '.split(vs):
+                mb_t = ScalarType.maybe_parse(v)
+                if mb_t is None:
+                    assert v in dtypes, f"unrecognized dtype {v}"
+                    dtype_set.update(dtypes[v])
+                else:
+                    dtype_set.add(mb_t)
+            dtypes[k] = dtype_set
+
+        # parse ufuncs
+        ufuncs_yaml = top.pop('ufuncs')
+        assert isinstance(ufuncs_yaml, list)
+        ufuncs = []
+        for e in ufuncs_yaml:
+            assert isinstance(e.get('__line__'), int), e
+            loc = Location(path, e['__line__'])
+            name = e.get('name', '(unknown name)')
+            with context(lambda: f'in {loc}:\n  {name}'):
+                ufuncs.append(Ufunc.from_yaml(e, dtypes, g_index))
+
+        return ufuncs
+
 
 # Some assertions are already performed during parsing, but those are only within a single NativeFunction.
 # Assertions here are meant to be performed across NativeFunctions.
@@ -1024,6 +1061,11 @@ def main() -> None:
     native_functions, backend_indices = parsed_yaml.native_functions, parsed_yaml.backend_indices
     grouped_native_functions = get_grouped_native_functions(native_functions)
     structured_native_functions = [g for g in grouped_native_functions if isinstance(g, NativeFunctionsGroup)]
+    # indexed by the functional op name; this is an arbitrary choice
+    g_index = {g.functional.func.name: g for g in structured_native_functions}
+
+    ufuncs_yaml_path = os.path.join(options.source_path, 'native/ufuncs.yaml')
+    parsed_ufuncs = parse_ufuncs_yaml(ufuncs_yaml_path, g_index)
 
     template_dir = os.path.join(options.source_path, "templates")
 

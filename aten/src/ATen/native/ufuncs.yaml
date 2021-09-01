@@ -1,0 +1,27 @@
+dtypes:
+  All: Byte, Char, Double, Float, Int, Long, Short
+  AllAndComplex: All, ComplexFloat, ComplexDouble
+  Floating: Double, Float
+  FloatingAndComplex: Floating, ComplexDouble, ComplexFloat
+
+ufuncs:
+- name: add.Tensor
+  dispatch:
+    CPU:
+      Bool:
+        Scalar: add
+      AllAndComplex, BFloat16, Half:
+        Scalar: add
+        Vector: add_vec
+    CUDA:
+      AllAndComplex, BFloat16, Half, Bool: add
+
+- name: true_divide.Tensor
+  dispatch:
+    CPU:
+      FloatingAndComplex, BFloat16, Half: div
+    CUDA:
+      FloatingAndComplex, BFloat16, Half:
+        AllTensor: div
+        TensorScalar: mul_reciprocal
+        ScalarTensor: div
