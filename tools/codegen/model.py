@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional, Iterator, Tuple, Set, NoReturn, Sequence, Callable, Union
 from enum import Enum, auto
 import itertools
+import functools
 
 # A little trick from https://github.com/python/mypy/issues/6366
 # for getting mypy to do exhaustiveness checking
@@ -150,6 +151,60 @@ def is_cuda_dispatch_key(dk: DispatchKey) -> bool:
 def is_structured_dispatch_key(dk: DispatchKey) -> bool:
     return dk in STRUCTURED_DISPATCH_KEYS
 
+# This is oddly named ScalarType and not DType for symmetry with C++
+class ScalarType(Enum):
+    Byte = auto()
+    Char = auto()
+    Short = auto()
+    Int = auto()
+    Long = auto()
+    Half = auto()
+    Float = auto()
+    Double = auto()
+    ComplexHalf = auto()
+    ComplexFloat = auto()
+    ComplexDouble = auto()
+    Bool = auto()
+    BFloat16 = auto()
+
+    @staticmethod
+    def maybe_parse(value: str) -> Optional['ScalarType']:
+        for k, v in ScalarType.__members__.items():
+            if k == value:
+                return v
+        return None
+
+    @staticmethod
+    def parse(value: str) -> 'ScalarType':
+        mb_r = ScalarType.maybe_parse(value)
+        assert mb_r is not None, f'unknown dtype {value}'
+        return mb_r
+
+    @staticmethod
+    def parse_set(values: str) -> Set[ScalarType]:
+        dtypes: Set[ScalarType] = set()
+        for value in ', '.split(values):
+            if value in DTYPE_CLASSES:
+                dtypes.update(DTYPE_CLASSES[value])
+            else:
+                dtypes.add(ScalarType.parse(value))
+        return dtypes
+
+
+DTYPE_CLASSES: Dict[str, Set[ScalarType]] = {}
+# NB: Integral doesn't include boolean
+DTYPE_CLASSES["Integral"] = {
+    ScalarType.Byte, ScalarType.Char, ScalarType.Int, ScalarType.Long,
+    ScalarType.Short
+}
+# NB: Floating doesn't include low precision types
+DTYPE_CLASSES["Floating"] = {ScalarType.Float, ScalarType.Double}
+DTYPE_CLASSES["Complex"] = {ScalarType.ComplexFloat, ScalarType.ComplexDouble}
+DTYPE_CLASSES["All"] = DTYPE_CLASSES["Integral"] | DTYPE_CLASSES["Floating"]
+DTYPE_CLASSES["AllAndComplex"] = DTYPE_CLASSES["All"] | DTYPE_CLASSES["Complex"]
+DTYPE_CLASSES["FloatingAndComplex"] = DTYPE_CLASSES["Floating"] | DTYPE_CLASSES["Complex"]
+# TODO: freeze this dict somehow
+
 class DeviceCheckType(Enum):
     NoCheck = 0
     ExactSame = 1
@@ -256,7 +311,7 @@ class NativeFunction:
     def from_yaml(
             ei: Dict[str, object],
             loc: 'Location'
-    ) -> Tuple['NativeFunction', Dict[DispatchKey, Dict['OperatorName', 'BackendMetadata']]]:
+    ) -> Tuple['NativeFunction', Dict[DispatchKey, Dict['OperatorName', 'DispatchMetadata']]]:
         """
         Parse a NativeFunction from a dictionary as directly parsed
         from native_functions.yaml
@@ -324,20 +379,43 @@ class NativeFunction:
 
         raw_dispatch = e.pop('dispatch', None)
         assert raw_dispatch is None or isinstance(raw_dispatch, dict), e
-        dispatch: Dict[DispatchKey, str] = {}
+        dispatch: Dict[DispatchKey, DispatchMetadata] = {}
         if raw_dispatch is not None:
             assert not manual_kernel_registration, \
                 "cannot specify both manual_kernel_registration and dispatch; with " \
                 "manual registration, dispatch has no effect!"
+            redundant_composite_implicit_autograd = False
             for ks, v in raw_dispatch.items():
                 if ks == '__line__':
                     continue  # not worth tracking line numbers for dispatch entries
                 assert isinstance(ks, str), e
-                assert isinstance(v, str), e
                 for k in ks.split(","):
                     dispatch_key = DispatchKey.parse(k.strip())
-                    dispatch[dispatch_key] = v
-            assert dispatch != {DispatchKey.CompositeImplicitAutograd: cpp.name(func)}, \
+                    if isinstance(v, str):
+                        # Why is 'structured' included? External backends (e.g.
+                        # XLA) opt into which ops are structured independently
+                        # of which in-tree ops are structured
+                        dispatch[dispatch_key] = BackendMetadata(
+                            v, structured=structured and is_structured_dispatch_key(dispatch_key))
+                        if dispatch_key is DispatchKey.CompositeImplicitAutograd and v == cpp.name(func):
+                            redundant_composite_implicit_autograd = True
+                    else:
+                        # ufuncs are ALWAYS structured
+                        assert isinstance(v, dict)
+                        dtype_dispatch: Dict[ScalarType, UfuncKernel] = {}
+                        for dtypes, kernel in v.items():
+                            for dtype in ScalarType.parse_set(dtypes):
+                                if dispatch_key == DispatchKey.CPU:
+                                    dtype_dispatch[dtype] = UfuncCPUKernel.from_yaml(kernel)
+                                elif dispatch_key == DispatchKey.CUDA:
+                                    dtype_dispatch[dtype] = UfuncCUDAKernel.from_yaml(kernel)
+                                else:
+                                    raise AssertionError(
+                                        f'unrecognized dispatch key for ufunc: {dispatch_key} '
+                                        '(only CPU and CUDA are valid)')
+                        dispatch[dispatch_key] = UfuncMetadata(dtype_dispatch)
+
+            assert not (len(dispatch) == 1 and redundant_composite_implicit_autograd), \
                 "unnecessary dispatch table for this function; just delete the dispatch " \
                 "key entirely"
             # if a function is a structured delegate, deleting the dispatch
@@ -347,7 +425,7 @@ class NativeFunction:
                 f"but got {dispatch[DispatchKey.CompositeImplicitAutograd]}.  Rename your implementation to the expected " \
                 "name, then delete the dispatch table"
         elif not structured and structured_delegate is None:
-            dispatch[DispatchKey.CompositeImplicitAutograd] = cpp.name(func)
+            dispatch[DispatchKey.CompositeImplicitAutograd] = BackendMetadata(cpp.name(func), structured=False)
 
         assert not (DispatchKey.CompositeExplicitAutograd in dispatch and DispatchKey.CompositeImplicitAutograd in dispatch), \
             "cannot specify both CompositeExplicitAutograd and CompositeImplicitAutograd on a single kernel; each " \
@@ -363,12 +441,11 @@ class NativeFunction:
         has_composite_implicit_autograd_kernel = DispatchKey.CompositeImplicitAutograd in dispatch.keys()
         has_composite_explicit_autograd_kernel = DispatchKey.CompositeExplicitAutograd in dispatch.keys()
 
-        # BackendMetadata is used to store any information about a NativeFunction that is backend dependent.
-        # The most obvious information is the kernel name, which usually contains the name of the backend in it for cpu/cuda.
-        # Why is 'structured' included? External backends (e.g. XLA) opt into which ops are structured
-        # independently of which in-tree ops are structured
-        backend_metadata = {k: {func.name: BackendMetadata(
-            kernel=v, structured=structured and is_structured_dispatch_key(k))} for k, v in dispatch.items()}
+        # We aren't going to store dispatch metadata inline in NativeFunctions;
+        # instead it is separately indexed by backend (so other backends can
+        # add more dispatch entries after the fact).  Reindex the individual
+        # metadata by OperatorName!
+        dispatch_metadata = {k: {func.name: v} for k, v in dispatch.items()}
 
         # don't care if it exists or not; make it easier to use this function
         # with other yaml parsers that aren't setting __line__ in the dict
@@ -400,7 +477,7 @@ class NativeFunction:
             is_abstract=is_abstract,
             has_composite_implicit_autograd_kernel=has_composite_implicit_autograd_kernel,
             has_composite_explicit_autograd_kernel=has_composite_explicit_autograd_kernel,
-        ), backend_metadata
+        ), dispatch_metadata
 
 
     def validate_unstructured(self) -> None:
@@ -589,7 +666,100 @@ class BackendMetadata:
     # in native_functions.yaml.
     # However, external backends like XLA can indendently toggle which ops are structured.
     structured: bool
-    #
+
+# CPU ufunc implementations must define a scalar element-by-element
+# implementation, and can optionally also provided a vectorized version
+@dataclass
+class UfuncCPUKernel:
+    scalar_fn: str
+    vector_fn: Optional[str]
+
+    @staticmethod
+    def from_yaml(ei: object) -> 'UfuncCPUKernel':
+        if isinstance(ei, str):
+            return UfuncCPUKernel(
+                scalar_fn=ei,
+                vector_fn=ei,
+            )
+
+        assert isinstance(ei, dict)
+        e = ei.copy()
+        scalar_fn = e.pop('Scalar')
+        assert isinstance(scalar_fn, str)
+
+        vector_fn = e.pop('Vector', None)
+        assert vector_fn is None or isinstance(vector_fn, str)
+
+        e.pop('__line__', None)
+        assert not e, f"leftover entries: {e}"
+
+        return UfuncCPUKernel(
+            scalar_fn=scalar_fn,
+            vector_fn=vector_fn,
+        )
+
+@dataclass(frozen=True)
+class UfuncAutoFn:
+    pass
+
+# CUDA ufunc implementations must define an element-by-element implementation
+# that takes all inputs as CUDA tensors.  Binary ufunc implementations can also
+# provide specializations for either argument being a CPU scalar.
+#
+# NB: it is not obvious at parse time whether or not we can automatically fill
+# in tensor_scalar_fn.  So these functions can be filled with a special token
+# UfuncAutoFn when the user has requested we automatically fill these out.
+# (This token is not currently explicitly representable in YAML but we could
+# add a syntax for it).
+@dataclass(frozen=True)
+class UfuncCUDAKernel:
+    all_tensor_fn: str
+    tensor_scalar_fn: Optional[Union[UfuncAutoFn, str]]
+    scalar_tensor_fn: Optional[Union[UfuncAutoFn, str]]
+
+    @staticmethod
+    def from_yaml(ei: object) -> 'UfuncCUDAKernel':
+        if isinstance(ei, str):
+            return UfuncCUDAKernel(
+                all_tensor_fn = ei,
+                tensor_scalar_fn = UfuncAutoFn(),
+                scalar_tensor_fn = UfuncAutoFn(),
+            )
+
+        assert isinstance(ei, dict)
+        e = ei.copy()
+        all_tensor_fn = e.pop('AllTensor')
+        assert isinstance(all_tensor_fn, str)
+        tensor_scalar_fn = e.pop('TensorScalar', None)
+        assert tensor_scalar_fn is None or isinstance(tensor_scalar_fn, str)
+        scalar_tensor_fn = e.pop('ScalarTensor', None)
+        assert scalar_tensor_fn is None or isinstance(scalar_tensor_fn, str)
+
+        e.pop('__line__', None)
+        assert not e, f'leftover entries: {e}'
+
+        return UfuncCUDAKernel(
+            all_tensor_fn=all_tensor_fn,
+            tensor_scalar_fn=tensor_scalar_fn,
+            scalar_tensor_fn=scalar_tensor_fn,
+        )
+
+
+# Loss of static type information here
+UfuncKernel = Union[UfuncCPUKernel, UfuncCUDAKernel]
+
+@dataclass(frozen=True)
+class UfuncMetadata:
+    dtype_dispatch: Dict[ScalarType, UfuncKernel]
+
+    # ufuncs are always structured
+    structured: bool = True
+
+
+# This represents per-backend "entries" in the dispatch table.  BackendMetadata
+# is the good old fashioned representation, whereas ufunc is a more structured
+# representation that works for pointwise operations
+DispatchMetadata = Union[BackendMetadata, UfuncMetadata]
 
 
 # BackendIndex represents a backend.
@@ -608,12 +778,12 @@ class BackendIndex:
     # Whether the backend is in-tree (CPU/CUDA) or out-of-tree (XLA)
     external: bool
     # Other backend-specific information that is on a per-operator basis
-    index: Dict['OperatorName', BackendMetadata]
+    index: Dict['OperatorName', DispatchMetadata]
 
     @staticmethod
     def grow_index(
-            parent_index: Dict[DispatchKey, Dict['OperatorName', BackendMetadata]],
-            child_index: Dict[DispatchKey, Dict['OperatorName', BackendMetadata]]
+            parent_index: Dict[DispatchKey, Dict['OperatorName', DispatchMetadata]],
+            child_index: Dict[DispatchKey, Dict['OperatorName', DispatchMetadata]]
     ) -> None:
         for k, v in child_index.items():
             for op_name, metadata in v.items():
@@ -630,8 +800,14 @@ class BackendIndex:
         m = self.get_kernel(g)
         return m is not None
 
+    # For use in cases where you can guarantee you only ever have
+    # BackendMetadata; this currently applies in gen_backend_stubs
+    def get_backend_kernel(self, g: Union[NativeFunction, NativeFunctionsGroup]) -> Optional[BackendMetadata]:
+        r = self.get_kernel(g)
+        assert isinstance(r, BackendMetadata)
+        return r
 
-    def get_kernel(self, g: Union[NativeFunction, NativeFunctionsGroup]) -> Optional[BackendMetadata]:
+    def get_kernel(self, g: Union[NativeFunction, NativeFunctionsGroup]) -> Optional[DispatchMetadata]:
         if isinstance(g, NativeFunction):
             f = g
         elif isinstance(g, NativeFunctionsGroup):
@@ -1496,175 +1672,3 @@ def parse_returns(return_decl: str) -> Tuple[Return, ...]:
     if return_decl[0] == '(' and return_decl[-1] == ')':
         return_decl = return_decl[1:-1]
     return tuple(Return.parse(arg) for arg in return_decl.split(', '))
-
-# This is oddly named ScalarType and not DType for symmetry with C++
-class ScalarType(Enum):
-    Byte = auto()
-    Char = auto()
-    Short = auto()
-    Int = auto()
-    Long = auto()
-    Half = auto()
-    Float = auto()
-    Double = auto()
-    ComplexHalf = auto()
-    ComplexFloat = auto()
-    ComplexDouble = auto()
-    Bool = auto()
-    BFloat16 = auto()
-
-    @staticmethod
-    def maybe_parse(value: str) -> Optional['ScalarType']:
-        for k, v in ScalarType.__members__.items():
-            if k == value:
-                return v
-        return None
-
-    @staticmethod
-    def parse(value: str) -> 'ScalarType':
-        mb_r = ScalarType.maybe_parse(value)
-        assert mb_r is not None, f'unknown dtype {value}'
-        return mb_r
-
-# CPU ufunc implementations must define a scalar element-by-element
-# implementation, and can optionally also provided a vectorized version
-@dataclass
-class UfuncDispatchCPU:
-    scalar_fn: str
-    vector_fn: Optional[str]
-
-    @staticmethod
-    def from_yaml(ei: object) -> 'UfuncDispatchCPU':
-        if isinstance(ei, str):
-            return UfuncDispatchCPU(
-                scalar_fn=ei,
-                vector_fn=ei,
-            )
-
-        assert isinstance(ei, dict)
-        e = ei.copy()
-        scalar_fn = e.pop('Scalar')
-        assert isinstance(scalar_fn, str)
-
-        vector_fn = e.pop('Vector', None)
-        assert vector_fn is None or isinstance(vector_fn, str)
-
-        e.pop('__line__', None)
-        assert not e, f"leftover entries: {e}"
-
-        return UfuncDispatchCPU(
-            scalar_fn=scalar_fn,
-            vector_fn=vector_fn,
-        )
-
-@dataclass(frozen=True)
-class UfuncAutoFn:
-    pass
-
-# CUDA ufunc implementations must define an element-by-element implementation
-# that takes all inputs as CUDA tensors.  Binary ufunc implementations can also
-# provide specializations for either argument being a CPU scalar.
-#
-# NB: it is not obvious at parse time whether or not we can automatically fill
-# in tensor_scalar_fn.  So these functions can be filled with a special token
-# UfuncAutoFn when the user has requested we automatically fill these out.
-# (This token is not currently explicitly representable in YAML but we could
-# add a syntax for it).
-@dataclass(frozen=True)
-class UfuncDispatchCUDA:
-    all_tensor_fn: str
-    tensor_scalar_fn: Optional[Union[UfuncAutoFn, str]]
-    scalar_tensor_fn: Optional[Union[UfuncAutoFn, str]]
-
-    @staticmethod
-    def from_yaml(ei: object) -> 'UfuncDispatchCUDA':
-        if isinstance(ei, str):
-            return UfuncDispatchCUDA(
-                all_tensor_fn = ei,
-                tensor_scalar_fn = UfuncAutoFn(),
-                scalar_tensor_fn = UfuncAutoFn(),
-            )
-
-        assert isinstance(ei, dict)
-        e = ei.copy()
-        all_tensor_fn = e.pop('AllTensor')
-        assert isinstance(all_tensor_fn, str)
-        tensor_scalar_fn = e.pop('TensorScalar', None)
-        assert tensor_scalar_fn is None or isinstance(tensor_scalar_fn, str)
-        scalar_tensor_fn = e.pop('ScalarTensor', None)
-        assert scalar_tensor_fn is None or isinstance(scalar_tensor_fn, str)
-
-        e.pop('__line__', None)
-        assert not e, f'leftover entries: {e}'
-
-        return UfuncDispatchCUDA(
-            all_tensor_fn=all_tensor_fn,
-            tensor_scalar_fn=tensor_scalar_fn,
-            scalar_tensor_fn=scalar_tensor_fn,
-        )
-
-# Ufuncs are defined in ufunc.yaml, and control the generation of
-# the appropriate TensorIterator
-@dataclass(frozen=True)
-class Ufunc:
-    # invariant: the group is always structured
-    g: NativeFunctionsGroup
-    cpu_dispatch: Dict[ScalarType, UfuncDispatchCPU]
-    # TODO: generalize cuda for other backends... maybe
-    cuda_dispatch: Dict[ScalarType, UfuncDispatchCUDA]
-
-    @staticmethod
-    def from_yaml(
-        ei: object,
-        dtype_classes: Dict[str, Set[ScalarType]],
-        g_index: Dict[OperatorName, NativeFunctionsGroup]
-    ) -> 'Ufunc':
-        assert isinstance(ei, dict)
-        e = ei.copy()
-
-        names = e.pop('name')
-        assert isinstance(names, str), f'not a str: {names}'
-        name = OperatorName.parse(names)
-        g = g_index[name]
-
-        def parse_dtypes(dtype_str: object):
-            assert isinstance(dtype_str, str), f'not a str: {dtype_str}'
-            dtype_list = ', '.split(dtype_str)
-            dtypes: Set[ScalarType] = set()
-            for dtype in dtype_list:
-                if dtype in dtype_classes:
-                    dtypes.update(dtype_classes[dtype])
-                else:
-                    dtypes.add(ScalarType.parse(dtype))
-            return dtypes
-
-        cpu_dispatch: Dict[ScalarType, UfuncDispatchCPU] = {}
-        cuda_dispatch: Dict[ScalarType, UfuncDispatchCUDA] = {}
-        device_map = e.pop('dispatch')
-        assert isinstance(device_map, dict), f'not a dict: {device_map}'
-        for device, dtype_map in device_map.items():
-            # parse CPU/CUDA
-            if device == '__line__':
-                continue
-            assert isinstance(dtype_map, dict)
-            if device == 'CPU':
-                for dtypes, special_map in dtype_map.items():
-                    cpu_special = UfuncDispatchCPU.from_yaml(special_map)
-                    for dtype in parse_dtypes(dtypes):
-                        cpu_dispatch[dtype] = cpu_special
-            elif device == 'CUDA':
-                for dtypes, dispatch_map in dtype_map.items():
-                    cuda_special = UfuncDispatchCUDA.from_yaml(special_map)
-                    for dtype in parse_dtypes(dtypes):
-                        cuda_dispatch[dtype] = cuda_special
-            else:
-                raise AssertionError(f'unrecognized device type: {device} (valid: CPU, CUDA)')
-
-        e.pop('__line__', None)
-        assert not e, f"leftover entries: {e}"
-
-        return Ufunc(
-            g=g,
-            cpu_dispatch=cpu_dispatch,
-            cuda_dispatch=cuda_dispatch,
-        )

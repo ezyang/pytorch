@@ -3,7 +3,7 @@ from typing import Union
 from typing_extensions import Literal
 
 from tools.codegen.utils import Target
-from tools.codegen.model import (Ufunc, NativeFunctionsGroup)
+from tools.codegen.model import (NativeFunctionsGroup)
 import tools.codegen.api.ufunc as ufunc
 
 # NB: not bothering to generate dispatch stub forward declaration in header,
@@ -11,6 +11,7 @@ import tools.codegen.api.ufunc as ufunc
 
 # TODO: use BackendIndex
 # dispatch_key: DispatchKey  # only CPU/CUDA right now
+
 
 
 
@@ -38,10 +39,13 @@ DEFINE_DISPATCH({stub_name(g)})
 @dataclass(frozen=True)
 class UfuncOperator:
     # TODO: add context
+    pass
 
+"""
     def __call__(self, ufunc: Ufunc) -> str:
         return '''
 
 
 
 '''
+"""

@@ -396,7 +396,14 @@
   structured: True
   structured_inherits: TensorIteratorBase
   dispatch:
-    CPU, CUDA: add_out
+    CPU:
+      Bool:
+        Scalar: add
+      AllAndComplex, BFloat16, Half:
+        Scalar: add
+        Vector: add_vec
+    CUDA:
+      AllAndComplex, BFloat16, Half, Bool: add
     SparseCPU: add_out_sparse_cpu
     SparseCUDA: add_out_sparse_cuda
     SparseCsrCPU: add_out_sparse_csr_cpu

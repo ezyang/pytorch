@@ -13,6 +13,9 @@ from tools.codegen.utils import mapMaybe
 
 from typing import Union, List, Optional
 
+def kernel_name(g: NativeFunctionsGroup) -> str:
+    return f"ufunc_{g.functional.func.name.name}"
+
 # The set of types ufuncs support is very limited indeed >:)
 def argumenttype_type(t: Type, *, binds: ArgName, refine: Optional[CType], tensor: bool) -> Optional[NamedCType]:
     if tensor:

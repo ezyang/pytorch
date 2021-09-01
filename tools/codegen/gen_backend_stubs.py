@@ -6,7 +6,7 @@ import re
 from collections import namedtuple, Counter, defaultdict
 from typing import List, Dict, Union, Sequence, Optional
 from tools.codegen.gen import FileManager, get_grouped_native_functions, parse_native_yaml
-from tools.codegen.model import (BackendIndex, BackendMetadata, DispatchKey,
+from tools.codegen.model import (BackendIndex, BackendMetadata, DispatchKey, DispatchMetadata,
                                  NativeFunction, NativeFunctionsGroup, OperatorName)
 from tools.codegen.selective_build.selector import SelectiveBuilder
 from tools.codegen.utils import Target, concatMap, context, YamlLoader
@@ -56,7 +56,7 @@ def parse_backend_yaml(
 Only the following keys are supported: {", ".join(valid_keys)}'
 
     def create_backend_index(backend_ops: List[str], dispatch_key: DispatchKey) -> BackendIndex:
-        metadata: Dict[OperatorName, BackendMetadata] = {}
+        metadata: Dict[OperatorName, DispatchMetadata] = {}
         for op in backend_ops:
             op_name = OperatorName.parse(op)
             assert op_name in native_functions_map, f"Found an invalid operator name: {op_name}"
@@ -93,21 +93,22 @@ the behavior of autograd for some operators on your backend. However "Autograd{b
         backend_indices[autograd_key] = autograd_idx
 
     for g in grouped_native_functions:
+        forward_kernels: List[BackendMetadata]
+        backward_kernels: List[BackendMetadata]
+
         if isinstance(g, NativeFunction):
             forward_kernels = [] if backend_key is None else \
-                [m for m in [backend_indices[backend_key].get_kernel(g)] if m is not None]
+                [m for m in [backend_indices[backend_key].get_backend_kernel(g)] if m is not None]
             backward_kernels = [] if autograd_key is None else \
-                [m for m in [backend_indices[autograd_key].get_kernel(g)] if m is not None]
+                [m for m in [backend_indices[autograd_key].get_backend_kernel(g)] if m is not None]
         else:
             forward_kernels = [] if backend_key is None else [m for m in [
-                backend_indices[backend_key].get_kernel(f) for f in g.functions()]
+                backend_indices[backend_key].get_backend_kernel(f) for f in g.functions()]
                 if m is not None]
             backward_kernels = [] if autograd_key is None else [m for m in [
-                backend_indices[autograd_key].get_kernel(f) for f in g.functions()]
+                backend_indices[autograd_key].get_backend_kernel(f) for f in g.functions()]
                 if m is not None]
 
-        forward_kernels = [f for f in forward_kernels if f is not None]
-        backward_kernels = [f for f in backward_kernels if f is not None]
         assert len(forward_kernels) == 0 or len(backward_kernels) == 0, \
             f'Currently, all variants of an op must either be registered to a backend key, or to a backend\'s \
 autograd key. They cannot be mix and matched. If this is something you need, feel free to create an issue! \

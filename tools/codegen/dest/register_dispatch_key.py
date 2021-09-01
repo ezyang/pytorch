@@ -11,7 +11,8 @@ from tools.codegen.model import (DispatchKey, NativeFunction,
                                  TensorOptionsArguments,
                                  DeviceCheckType, Argument, assert_never,
                                  is_cuda_dispatch_key, BackendIndex,
-                                 gets_generated_out_inplace_wrapper)
+                                 gets_generated_out_inplace_wrapper, UfuncMetadata,
+                                 BackendMetadata)
 from tools.codegen.api.types import (BaseCType, Binding, ConstRefCType,
                                      CppSignature, CppSignatureGroup,
                                      Expr, MutRefCType, kernel_signature,
@@ -20,6 +21,7 @@ from tools.codegen.api.types import (BaseCType, Binding, ConstRefCType,
 import tools.codegen.api.meta as meta
 import tools.codegen.api.cpp as cpp
 import tools.codegen.api.structured as structured
+import tools.codegen.api.ufunc as ufunc
 from tools.codegen.api.translate import translate
 from tools.codegen.selective_build.selector import SelectiveBuilder
 
@@ -151,6 +153,8 @@ class RegisterDispatchKey:
             assert not self.backend_index.has_kernel(g.out), \
                 "Do not explicitly specify CompositeExplicitAutograd dispatch key on structured " \
                 "functions, they will be automatically generated for you"
+        elif isinstance(metadata, UfuncMetadata):
+            assert False   # TODO
         elif metadata is None or not metadata.structured:
             return list(mapMaybe(lambda f: self.gen_unstructured(f, g), g.functions()))
 
@@ -237,6 +241,8 @@ return {sig.name()}({', '.join(e.expr for e in translate(cpp_sig.arguments(), si
                 metadata = self.backend_index.get_kernel(f)
                 if metadata is None:
                     return None
+                # NB: This is checked on entry to unstructured
+                assert isinstance(metadata, BackendMetadata)
                 if self.class_method_name is None:
                     impl_name = f"{self.cpp_namespace}::{metadata.kernel}"
                 else:
@@ -529,8 +535,16 @@ return {sig.name()}({', '.join(e.expr for e in translate(cpp_sig.arguments(), si
             else:
                 metadata = self.backend_index.get_kernel(self.g)
                 assert metadata is not None
-                class_name = f"structured_{metadata.kernel}_{k.name}"
-                parent_class = f"{self.cpp_namespace}::structured_{metadata.kernel}"
+                if isinstance(metadata, BackendMetadata):
+                    # Conventional
+                    class_name = f"structured_{metadata.kernel}_{k.name}"
+                    parent_class = f"{self.cpp_namespace}::structured_{metadata.kernel}"
+                elif isinstance(metadata, UfuncMetadata):
+                    # Ufunc, This is all going to be codegen'ed
+                    class_name = f"structured_{ufunc.kernel_name(self.g)}_{k.name}"
+                    parent_class = f"{self.cpp_namespace}::structured_{ufunc.kernel_name(self.g)}"
+                else:
+                    assert_never(metadata)
 
             if is_cuda_dispatch_key(self.backend_index.dispatch_key):
                 device_check_args = itertools.chain(
