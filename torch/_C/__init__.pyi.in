@@ -608,7 +608,7 @@ def _vmapmode_increment_nesting() -> _int: ...  # THPModule_vmapmode_increment_n
 def _vmapmode_decrement_nesting() -> _int: ...  # THPModule_vmapmode_decrement_nesting
 def _log_api_usage_once(str) -> None: ...  # LogAPIUsageOnceFromPython
 def _demangle(str) -> str: ...  # c10::demangle
-def _disabled_torch_function_impl(func: Callable, types: Iterable[Type], args: Tuple, kwargs: Dict) -> Any: ...  # THPModule_disable_torch_function
+def _disabled_torch_function_impl(cls: Type, func: Callable, types: Iterable[Type], args: Tuple, kwargs: Dict) -> Any: ...  # THPModule_disable_torch_function
 
 # Defined in `valgrind.h` and `callgrind.h` respecitively.
 def _valgrind_supported_platform() -> _bool: ...  # NVALGRIND

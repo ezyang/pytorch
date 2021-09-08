@@ -103,10 +103,50 @@ PyObject* THPModule_DisableTorchFunctionType() {
 
 PyObject* THPModule_disable_torch_function(PyObject *self, PyObject *a) {
   HANDLE_TH_ERRORS
-  PyObject *func=nullptr, *types=nullptr, *args=nullptr, *kwargs=nullptr;
-  if (!PyArg_ParseTuple(a, "OO|OO", &func, &types, &args, &kwargs)) {
-    return nullptr;
+  // NB: self here is the _C module object
+
+  constexpr char* legacy_error = "";
+
+  PyObject *cls=nullptr, *func=nullptr, *types=nullptr, *args=nullptr, *kwargs=nullptr;
+  if (!PyArg_ParseTuple(a, "OOO|OO", &cls, &func, &types, &args, &kwargs)) {
+    PyObject *ptype=nullptr, *pvalue=nullptr, *ptraceback=nullptr;
+    PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+    // Check for legacy syntax.  This should happen rarely, as most invocations
+    // of __torch_function__ fill in all optional arguments
+    if (PyArg_ParseTuple(a, "OO|OO", &func, &types, &args, &kwargs)) {
+      cls = nullptr;
+    } else {
+      PyErr_Restore(ptype, pvalue, ptraceback);
+      return nullptr;
+    }
   }
+
+  if (!PyType_Check(cls)) {
+    // Legacy syntax, everything is shifted
+    kwargs = args;
+    args = types;
+    types = func;
+    func = cls;
+    cls = nullptr;
+  }
+
+  if (cls != nullptr) {
+    // Analogous to this line in the default __torch_function__:
+    //
+    // if not all(issubclass(cls, t) for t in types):
+    //      return NotImplemented
+    for (const auto& type : py::cast<py::tuple>(types)) {
+      int result = PyObject_IsSubclass(type.ptr(), cls);
+      if (result == -1) throw python_error();
+      if (result == 0) Py_RETURN_NOTIMPLEMENTED;
+    }
+  } else {
+    // This check is bypassed in legacy mode but we raise a warning about it
+    TORCH_WARN_ONCE("One of the types ", py::cast<py::tuple>(types), " has __torch_function__ disabled using the legacy syntax.  "
+        "The modern syntax you should use is '__torch_function__ = classmethod(torch._C._disabled_torch_function_impl)'; "
+        "this allows for proper interoperability with other objects that define __torch_function__.");
+  }
+
   py::tuple py_args;
   if (args == nullptr) {
     py_args = py::make_tuple();

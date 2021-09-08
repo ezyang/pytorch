@@ -43,7 +43,7 @@ class Parameter(torch.Tensor):
             (self.data, self.requires_grad, OrderedDict())
         )
 
-    __torch_function__ = _disabled_torch_function_impl
+    __torch_function__ = classmethod(_disabled_torch_function_impl)
 
 
 class UninitializedTensorMixin:
