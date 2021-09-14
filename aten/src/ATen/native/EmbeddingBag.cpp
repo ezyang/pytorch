@@ -767,6 +767,27 @@ _embedding_bag_forward_only_cpu(const Tensor &weight, const Tensor &indices,
       /*requires_grad=*/false);
 }
 
+
+std::tuple<Tensor, Tensor, Tensor, Tensor>
+_embedding_bag_meta(const Tensor &weight, const Tensor &indices,
+                  const Tensor &offsets, const bool scale_grad_by_freq,
+                  const int64_t mode, bool sparse, const c10::optional<Tensor>& per_sample_weights_opt, bool include_last_offset,
+                  int64_t padding_idx) {
+  // TODO: check arguments valid
+
+  Tensor output = at::empty(
+      {include_last_offset ? offsets.sizes()[0] - 1 : offsets.sizes()[0],
+       weight.sizes()[1]},
+      weight.options());
+
+  // TODO: sometimes this is zero size
+  Tensor offset2bag = at::empty({indices.sizes()[0] + 1}, offsets.options());
+  Tensor bag_size = at::empty(offsets.sizes(), offsets.options());
+  Tensor max_indices = at::empty(bag_size.sizes(), offsets.options());
+
+  return std::make_tuple(std::move(output), std::move(offset2bag), std::move(bag_size), std::move(max_indices));
+}
+
 // Assumes all input tensors except for `weight` are contiguous.
 // See NOTE [ embedding_bag Native Functions ] in native_functions.yaml for details
 std::tuple<Tensor, Tensor, Tensor, Tensor>
