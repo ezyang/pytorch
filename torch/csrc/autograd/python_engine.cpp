@@ -290,10 +290,21 @@ PyObject* THPEngine_queue_callback(PyObject *self, PyObject *_callback) {
   auto& engine = python::PythonEngine::get_python_engine();
   std::shared_ptr<PyObject> callback(_callback, [](PyObject *obj) { pybind11::gil_scoped_acquire gil; Py_DECREF(obj); });
   Py_INCREF(_callback);
-  engine.queue_callback([callback]() {
-    pybind11::gil_scoped_acquire gil;
-    THPObjectPtr result {PyObject_CallFunctionObjArgs(callback.get(), nullptr)};
-    if (!result) throw python_error();
+  engine.queue_callback([]() {
+    //pybind11::gil_scoped_acquire gil;
+    // THPObjectPtr result {PyObject_CallFunctionObjArgs(callback.get(), nullptr)};
+    // if (!result) throw python_error();
+    throw std::runtime_error("arf");
+  });
+  Py_RETURN_NONE;
+  END_HANDLE_TH_ERRORS
+}
+
+PyObject* THPEngine_barf(PyObject *self, PyObject *_callback) {
+  HANDLE_TH_ERRORS
+  auto& engine = python::PythonEngine::get_python_engine();
+  engine.barf([]() {
+    throw std::runtime_error("arf");
   });
   Py_RETURN_NONE;
   END_HANDLE_TH_ERRORS
@@ -321,6 +332,7 @@ static struct PyMethodDef THPEngine_methods[] = {
     castPyCFunctionWithKeywords(THPEngine_run_backward),
     METH_VARARGS | METH_KEYWORDS, nullptr},
   {(char*)"queue_callback", THPEngine_queue_callback, METH_O, nullptr},
+  {(char*)"barf", THPEngine_barf, METH_O, nullptr},
   {(char*)"is_checkpoint_valid", THPEngine_is_checkpoint_valid, METH_NOARGS, nullptr},
   {nullptr}
 };

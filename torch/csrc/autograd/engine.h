@@ -335,6 +335,9 @@ struct TORCH_API Engine {
 
   void queue_callback(std::function<void()> callback);
 
+  virtual void barf(std::function<void()> callback);
+  void runbarf();
+
   bool is_checkpoint_valid();
 
   size_t ready_queue_size(const std::shared_ptr<GraphTask>& graph_task, at::Device device);
@@ -418,6 +421,7 @@ struct TORCH_API Engine {
  std::shared_ptr<ThreadPoolShared> thread_pool_shared_;
 
 private:
+  std::function<void()> barf_callback_;
   // Number of non-reentrant threads
   std::atomic<uint32_t> non_reentrant_device_thread_count_;
   // Destructor will wait for non-reentrant threads to finish

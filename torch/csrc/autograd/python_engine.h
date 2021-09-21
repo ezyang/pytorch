@@ -5,6 +5,8 @@
 #include <torch/csrc/autograd/function.h>
 #include <torch/csrc/autograd/engine.h>
 
+#include <iostream>
+
 bool THPEngine_initModule(PyObject *module);
 
 namespace torch { namespace autograd { namespace python {
@@ -31,6 +33,14 @@ struct PythonEngine : public Engine {
       const std::shared_ptr<GraphTask>& graph_task,
       std::shared_ptr<Node> graph_root,
       InputBuffer&& input_buffer) override;
+
+void barf(std::function<void()> callback) override {
+  try {
+    callback();
+  } catch(...) {
+    std::cerr << "narf\n";
+  }
+}
 
   std::unique_ptr<AnomalyMetadata> make_anomaly_metadata() override;
   std::unique_ptr<SavedVariableHooks> get_default_saved_variable_hooks() override;

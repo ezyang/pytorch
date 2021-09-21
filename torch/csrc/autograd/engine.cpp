@@ -596,7 +596,13 @@ void GraphTask::exec_post_processing() {
     // NOLINTNEXTLINE(modernize-loop-convert)
     for (size_t i = 0; i < final_callbacks_.size(); ++i) {
       cb_lock.unlock();
-      final_callbacks_[i]();
+      try {
+        final_callbacks_[i]();
+      } catch(std::exception&) {
+        std::cerr << "boom\n";
+      } catch(...) {
+        std::cerr << "boof\n";
+      }
       cb_lock.lock();
     }
   }
@@ -1132,6 +1138,14 @@ void set_default_engine_stub(EngineStub stub) {
 
 Engine& Engine::get_default_engine() {
   return engine_stub.load()();
+}
+
+void Engine::barf(std::function<void()> callback) {
+  try {
+    callback();
+  } catch(...) {
+    std::cerr << "narf\n";
+  }
 }
 
 void Engine::queue_callback(std::function<void()> callback) {
