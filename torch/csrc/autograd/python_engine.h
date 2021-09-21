@@ -34,14 +34,6 @@ struct PythonEngine : public Engine {
       std::shared_ptr<Node> graph_root,
       InputBuffer&& input_buffer) override;
 
-void barf(std::function<void()> callback) override {
-  try {
-    callback();
-  } catch(...) {
-    std::cerr << "narf\n";
-  }
-}
-
   std::unique_ptr<AnomalyMetadata> make_anomaly_metadata() override;
   std::unique_ptr<SavedVariableHooks> get_default_saved_variable_hooks() override;
   private:
