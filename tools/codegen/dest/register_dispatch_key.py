@@ -153,8 +153,6 @@ class RegisterDispatchKey:
             assert not self.backend_index.has_kernel(g.out), \
                 "Do not explicitly specify CompositeExplicitAutograd dispatch key on structured " \
                 "functions, they will be automatically generated for you"
-        elif isinstance(metadata, UfuncMetadata):
-            assert False   # TODO
         elif metadata is None or not metadata.structured:
             return list(mapMaybe(lambda f: self.gen_unstructured(f, g), g.functions()))
 

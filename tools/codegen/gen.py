@@ -14,7 +14,7 @@ from tools.codegen.code_template import CodeTemplate
 from tools.codegen.model import (Argument, DispatchKey, FunctionSchema,
                                  Location, NativeFunction,
                                  NativeFunctionsGroup, OperatorName,
-                                 BackendIndex, BackendMetadata,
+                                 BackendIndex, BackendMetadata, UfuncMetadata,
                                  OptionalType, SchemaKind, SelfArgument,
                                  TensorOptionsArguments, Type, Variant,
                                  assert_never, is_cuda_dispatch_key,
@@ -1025,8 +1025,6 @@ def main() -> None:
     native_functions, backend_indices = parsed_yaml.native_functions, parsed_yaml.backend_indices
     grouped_native_functions = get_grouped_native_functions(native_functions)
     structured_native_functions = [g for g in grouped_native_functions if isinstance(g, NativeFunctionsGroup)]
-    # indexed by the functional op name; this is an arbitrary choice
-    g_index = {g.functional.func.name: g for g in structured_native_functions}
 
     template_dir = os.path.join(options.source_path, "templates")
 
@@ -1159,6 +1157,31 @@ def main() -> None:
                     grouped_native_functions
                 )),
             })
+
+        for g in structured_native_functions:
+            kernel = backend_indices[dispatch_key].get_kernel(g)
+            if not isinstance(kernel, UfuncMetadata):
+                continue
+            name = g.functional.func.name.name
+            if dispatch_key is DispatchKey.CPU:
+                fm.write_with_template(f'UfuncCPU_{name}.cpp', 'UfuncCPU.cpp', lambda: {
+                })
+                fm.write_with_template(f'UfuncCPUKernel_{name}.cpp', 'UfuncCPUKernel.cpp', lambda: {
+                })
+            elif dispatch_key is DispatchKey.CUDA:
+                fm.write_with_template(f'UfuncCUDA_{name}.cu', 'UfuncCUDA.cu', lambda: {
+                    'name': name,
+                    #'meta_declaration': compute_meta_function_declaration(g),
+                    #'native_declaration':
+                    #    dest.compute_native_function_declaration(g, backend_indices[dispatch_key]),
+                    # TODO: fix so that NativeFunctions.h isn't indirectly
+                    # included
+                    'meta_declaration': '',
+                    'native_declaration': '',
+                    'namespaced_definitions': dest.compute_ufunc_cuda(g, kernel),
+                })
+            else:
+                raise AssertionError(f'unrecognized {dispatch_key} for ufunc')
 
         del fm
 

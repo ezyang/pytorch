@@ -1,5 +1,5 @@
 from tools.codegen.model import (Argument, FunctionSchema, NativeFunction,
-                                 BackendIndex,
+                                 BackendIndex, NativeFunctionsGroup,
                                  SelfArgument, TensorOptionsArguments, BaseTy)
 from dataclasses import dataclass
 from typing import Optional, Union, Sequence, TypeVar, List, Set, Dict
@@ -502,6 +502,19 @@ class NativeSignature:
         return translate.translate(self.arguments(), dispatcher.arguments(self.func), method=False)
 
 
+@dataclass(frozen=True)
+class StructuredImplSignature:
+    g: NativeFunctionsGroup
+    name: str
+
+    def defn(self, name: Optional[str] = None) -> str:
+        args_str = ', '.join(a.defn() for a in self.arguments())
+        return f"TORCH_IMPL_FUNC({self.name})({args_str})"
+
+    def arguments(self) -> List[Binding]:
+        return structured.impl_arguments(self.g)
+
+
 # Helper functions
 
 def kernel_signature(
@@ -521,4 +534,4 @@ def kernel_signature(
         return NativeSignature(f.func, prefix)
 
 # Functions only, no types
-from tools.codegen.api import cpp, dispatcher, native, translate
+from tools.codegen.api import cpp, dispatcher, native, translate, structured

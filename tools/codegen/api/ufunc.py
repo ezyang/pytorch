@@ -16,47 +16,113 @@ from typing import Union, List, Optional
 def kernel_name(g: NativeFunctionsGroup) -> str:
     return f"ufunc_{g.functional.func.name.name}"
 
-# The set of types ufuncs support is very limited indeed >:)
-def argumenttype_type(t: Type, *, binds: ArgName, refine: Optional[CType], tensor: bool) -> Optional[NamedCType]:
-    if tensor:
-        # We only do type translation for tensors within refined contexts (where we
-        # know what the dtype is statically)
-        assert refine is not None
-        if t == BaseType(BaseTy.Tensor):
-            return NamedCType(binds, refine)
-        if t.is_tensor_like():
-            raise AssertionError(f"unrecognized type {repr(t)}")
+# Tensors are omitted (as they are stored in TensorIterator), everything else is
+# passed along  (technically, we can pass tensors along too, it just wastes
+# argument registers)
+#
+# NB: used for CPU only
+def dispatchstub_type(t: Type, *, binds: ArgName) -> Optional[NamedCType]:
+    r = cpp.valuetype_type(t, binds=binds)
+    if r is not None:
+        return r
+
+    if t == BaseTy(BaseTy.Scalar):
+        return NamedCType(binds, ConstRefCType(BaseCType(scalarT)))
+    elif t == BaseType(BaseTy.Tensor):
         return None
     else:
-        if t.is_tensor_like():
-            return None
+        raise AssertionError(f"unrecognized type {repr(t)}")
 
-        # If it's a value type, do the value type translation
-        r = cpp.valuetype_type(t, binds=binds)
-        if r is not None:
-            return r
+def opmath_type(scalar_t: BaseCppType) -> BaseCppType:
+    raise NotImplementedError
 
-        if t == BaseTy(BaseTy.Scalar):
-            if refine is None:
-                return NamedCType(binds, ConstRefCType(BaseCType(scalarT)))
-            else:
-                return NamedCType(binds, refine)
-        else:
-            raise AssertionError(f"unrecognized type {repr(t)}")
+# NB: Tensors in constructor are stored in opmath_t, not scalar_t
+# because Tensor in constructor = its a scalar tensor partially applied =
+# it can be higher precision and we want to compute in that higher precision
+#
+# NB: CUDA only
+def ufunctor_ctor_type(t: Type, *, binds: ArgName, scalar_t: BaseCppType) -> NamedCType:
+    r = cpp.valuetype_type(t, binds=binds)
+    if r is not None:
+        return r
 
-def argument(a: Argument, *, refine: Optional[CType], tensor: bool) -> Optional[Binding]:
-    nctype = argumenttype_type(a.type, binds=a.name, refine=refine, tensor=tensor)
-    if nctype is None:
-        return None
+    if t == BaseTy(BaseTy.Scalar):
+        return NamedCType(binds, ConstRefCType(BaseCType(scalar_t)))
+    elif t == BaseType(BaseTy.Tensor):
+        return NamedCType(binds, BaseCType(opmath_type(scalar_t)))
+    else:
+        raise AssertionError(f"unrecognized type {repr(t)}")
+
+# Only Tensors ever get passed directly to operator()
+#
+# NB: CUDA only
+def ufunctor_apply_type(t: Type, *, binds: ArgName, scalar_t: BaseCppType) -> NamedCType:
+    if t == BaseType(BaseTy.Tensor):
+        return NamedCType(binds, scalar_t)
+    else:
+        raise AssertionError(f"unrecognized type {repr(t)}")
+
+# The actual ufunc template function the user writes.  Everything here
+# is done in the computation type.  compute_t is opmath_t in CUDA and scalar_t
+# in CPU
+def ufunc_type(t: Type, *, binds: ArgName, compute_t: BaseCppType) -> NamedCType:
+    r = cpp.valuetype_type(t, binds=binds)
+    if r is not None:
+        return r
+
+    if t == BaseTy(BaseTy.Scalar):
+        return NamedCType(binds, BaseCType(compute_t))
+    elif t == BaseType(BaseTy.Tensor):
+        return NamedCType(binds, BaseCType(compute_t))
+    else:
+        raise AssertionError(f"unrecognized type {repr(t)}")
+
+def ufunctor_ctor_argument(a: Argument, scalar_t: BaseCppType) -> Binding:
     return Binding(
-        nctype=nctype,
+        nctype=ufunctor_ctor_type(a.type, binds=a.name, scalar_t=scalar_t),
         name=a.name,
         default=None,
         argument=a,
     )
 
-def arguments(g: NativeFunctionsGroup, *, refine: Optional[CType], tensor: bool) -> List[Binding]:
-    return list(mapMaybe(
-        lambda a: argument(a, refine=refine, tensor=tensor),
-        g.functional.func.arguments.flat_non_out
-    ))
+def ufunctor_apply_argument(a: Argument, scalar_t: BaseCppType) -> Binding:
+    return Binding(
+        nctype=ufunctor_apply_type(a.type, binds=a.name, scalar_t=scalar_t),
+        name=a.name,
+        default=None,
+        argument=a,
+    )
+
+def ufunc_argument(a: Argument, compute_t: BaseCppType) -> Binding:
+    return Binding(
+        nctype=ufunc_type(a.type, binds=a.name, compute_t=compute_t),
+        name=a.name,
+        default=None,
+        argument=a,
+    )
+
+@dataclass(frozen=True)
+class UfunctorBindings:
+    ctor: List[Binding]
+    apply: List[Binding]
+
+def ufunctor_arguments(g: NativeFunctionsGroup, *, scalar_tensor: Optional[int], scalar_t: BaseCppType) -> UfunctorBindings:
+    ctor = []
+    apply = []
+    for a in g.functional.func.arguments.flat_non_out:
+        if a.type.is_tensor_like():
+            if scalar_tensor == 0:
+                # put it in the ctor anyway
+                ctor.append(ufunctor_ctor_argument(a))
+                scalar_tensor = None
+            else:
+                if scalar_tensor is not None:
+                    scalar_tensor -= 1
+                apply.append(ufunctor_apply_argument(a))
+        else:
+            ufunctor_ctor_agument(a)
+    assert scalar_tensor is None
+    return UfunctorBindings(ctor=ctor, apply=apply)
+
+def ufunc_arguments(g: NativeFunctionsGroup, *, compute_t: CType, compute_t: BaseCppType) -> List[Binding]
+    return [ufunc_argument(a, compute_t=compute_t) for a in g.functional.func.arguments.flat_non_out]

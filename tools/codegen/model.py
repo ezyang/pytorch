@@ -167,6 +167,9 @@ class ScalarType(Enum):
     Bool = auto()
     BFloat16 = auto()
 
+    def __str__(self) -> str:
+        return self.name
+
     @staticmethod
     def maybe_parse(value: str) -> Optional['ScalarType']:
         for k, v in ScalarType.__members__.items():
@@ -181,9 +184,9 @@ class ScalarType(Enum):
         return mb_r
 
     @staticmethod
-    def parse_set(values: str) -> Set[ScalarType]:
+    def parse_set(values: str) -> Set['ScalarType']:
         dtypes: Set[ScalarType] = set()
-        for value in ', '.split(values):
+        for value in values.split(', '):
             if value in DTYPE_CLASSES:
                 dtypes.update(DTYPE_CLASSES[value])
             else:
@@ -391,24 +394,25 @@ class NativeFunction:
                 assert isinstance(ks, str), e
                 for k in ks.split(","):
                     dispatch_key = DispatchKey.parse(k.strip())
-                    if isinstance(v, str):
-                        # Why is 'structured' included? External backends (e.g.
-                        # XLA) opt into which ops are structured independently
-                        # of which in-tree ops are structured
-                        dispatch[dispatch_key] = BackendMetadata(
-                            v, structured=structured and is_structured_dispatch_key(dispatch_key))
-                        if dispatch_key is DispatchKey.CompositeImplicitAutograd and v == cpp.name(func):
-                            redundant_composite_implicit_autograd = True
+                    # Why is 'structured' included? External backends (e.g.
+                    # XLA) opt into which ops are structured independently
+                    # of which in-tree ops are structured
+                    dispatch[dispatch_key] = BackendMetadata(
+                        v, structured=structured and is_structured_dispatch_key(dispatch_key))
+                    if dispatch_key is DispatchKey.CompositeImplicitAutograd and v == cpp.name(func):
+                        redundant_composite_implicit_autograd = True
                     else:
                         # ufuncs are ALWAYS structured
                         assert isinstance(v, dict)
                         dtype_dispatch: Dict[ScalarType, UfuncKernel] = {}
                         for dtypes, kernel in v.items():
+                            if dtypes == '__line__':
+                                continue
                             for dtype in ScalarType.parse_set(dtypes):
                                 if dispatch_key == DispatchKey.CPU:
                                     dtype_dispatch[dtype] = UfuncCPUKernel.from_yaml(kernel)
                                 elif dispatch_key == DispatchKey.CUDA:
-                                    dtype_dispatch[dtype] = UfuncCUDAKernel.from_yaml(kernel)
+                                    dtype_dispatch[dtype] = UfuncCUDAKernel.from_yaml(kernel, func)
                                 else:
                                     raise AssertionError(
                                         f'unrecognized dispatch key for ufunc: {dispatch_key} '
@@ -698,32 +702,26 @@ class UfuncCPUKernel:
             vector_fn=vector_fn,
         )
 
-@dataclass(frozen=True)
-class UfuncAutoFn:
-    pass
-
 # CUDA ufunc implementations must define an element-by-element implementation
 # that takes all inputs as CUDA tensors.  Binary ufunc implementations can also
 # provide specializations for either argument being a CPU scalar.
-#
-# NB: it is not obvious at parse time whether or not we can automatically fill
-# in tensor_scalar_fn.  So these functions can be filled with a special token
-# UfuncAutoFn when the user has requested we automatically fill these out.
-# (This token is not currently explicitly representable in YAML but we could
-# add a syntax for it).
 @dataclass(frozen=True)
 class UfuncCUDAKernel:
     all_tensor_fn: str
-    tensor_scalar_fn: Optional[Union[UfuncAutoFn, str]]
-    scalar_tensor_fn: Optional[Union[UfuncAutoFn, str]]
+    # NB: so far no way to disable scalar generation; should be some special str
+    # sigil
+    # TODO: scalar-ization can be made to work for variadic
+    tensor_scalar_fn: Optional[str]
+    scalar_tensor_fn: Optional[str]
 
     @staticmethod
-    def from_yaml(ei: object) -> 'UfuncCUDAKernel':
+    def from_yaml(ei: object, func: FunctionSchema) -> 'UfuncCUDAKernel':
         if isinstance(ei, str):
+            fn = UfuncGenericFn(ei)
             return UfuncCUDAKernel(
-                all_tensor_fn = ei,
-                tensor_scalar_fn = UfuncAutoFn(),
-                scalar_tensor_fn = UfuncAutoFn(),
+                all_tensor_fn = fn,
+                tensor_scalar_fn = None,
+                scalar_tensor_fn = None,
             )
 
         assert isinstance(ei, dict)
@@ -739,9 +737,9 @@ class UfuncCUDAKernel:
         assert not e, f'leftover entries: {e}'
 
         return UfuncCUDAKernel(
-            all_tensor_fn=all_tensor_fn,
-            tensor_scalar_fn=tensor_scalar_fn,
-            scalar_tensor_fn=scalar_tensor_fn,
+            all_tensor_fn=UfuncGenericFn(all_tensor_fn),
+            tensor_scalar_fn=UfuncSpecializedFn(tensor_scalar_fn) if tensor_scalar_fn is not None else None,
+            scalar_tensor_fn=UfuncSpecializedFn(scalar_tensor_fn) if scalar_tensor_fn is not None else None,
         )
 
 
