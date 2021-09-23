@@ -208,6 +208,23 @@ DTYPE_CLASSES["AllAndComplex"] = DTYPE_CLASSES["All"] | DTYPE_CLASSES["Complex"]
 DTYPE_CLASSES["FloatingAndComplex"] = DTYPE_CLASSES["Floating"] | DTYPE_CLASSES["Complex"]
 # TODO: freeze this dict somehow
 
+
+class UfuncKey(Enum):
+    Generic = auto()
+    ScalarOnly = auto()
+    CUDAFunctorOnSelf = auto()
+
+    def __str__(self) -> str:
+        return self.name
+
+    @staticmethod
+    def parse(value: str) -> 'UfuncKey':
+        for k, v in UfuncKey.__members__.items():
+            if k == value:
+                return v
+        raise AssertionError(f'unknown ufunc key {value}')
+
+
 class DeviceCheckType(Enum):
     NoCheck = 0
     ExactSame = 1
@@ -268,6 +285,9 @@ class NativeFunction:
     # defined.  This is for conveniently reporting error messages!
     loc: 'Location'
 
+    # If non-empty, this kernel is subject to ufunc codegen.
+    ufunc_inner_loop: Dict[UfuncKey, UfuncInnerLoop]
+
     # Whether or not this out functions is a "structured kernel".  Structured
     # kernels are defined a little differently from normal kernels; in
     # particular, their shape checking logic is defined separately from
@@ -314,7 +334,7 @@ class NativeFunction:
     def from_yaml(
             ei: Dict[str, object],
             loc: 'Location'
-    ) -> Tuple['NativeFunction', Dict[DispatchKey, Dict['OperatorName', 'DispatchMetadata']]]:
+    ) -> Tuple['NativeFunction', Dict[DispatchKey, Dict['OperatorName', 'BackendMetadata']]]:
         """
         Parse a NativeFunction from a dictionary as directly parsed
         from native_functions.yaml
@@ -382,7 +402,7 @@ class NativeFunction:
 
         raw_dispatch = e.pop('dispatch', None)
         assert raw_dispatch is None or isinstance(raw_dispatch, dict), e
-        dispatch: Dict[DispatchKey, DispatchMetadata] = {}
+        dispatch: Dict[DispatchKey, BackendMetadata] = {}
         if raw_dispatch is not None:
             assert not manual_kernel_registration, \
                 "cannot specify both manual_kernel_registration and dispatch; with " \
@@ -401,23 +421,6 @@ class NativeFunction:
                         v, structured=structured and is_structured_dispatch_key(dispatch_key))
                     if dispatch_key is DispatchKey.CompositeImplicitAutograd and v == cpp.name(func):
                         redundant_composite_implicit_autograd = True
-                    else:
-                        # ufuncs are ALWAYS structured
-                        assert isinstance(v, dict)
-                        dtype_dispatch: Dict[ScalarType, UfuncKernel] = {}
-                        for dtypes, kernel in v.items():
-                            if dtypes == '__line__':
-                                continue
-                            for dtype in ScalarType.parse_set(dtypes):
-                                if dispatch_key == DispatchKey.CPU:
-                                    dtype_dispatch[dtype] = UfuncCPUKernel.from_yaml(kernel)
-                                elif dispatch_key == DispatchKey.CUDA:
-                                    dtype_dispatch[dtype] = UfuncCUDAKernel.from_yaml(kernel, func)
-                                else:
-                                    raise AssertionError(
-                                        f'unrecognized dispatch key for ufunc: {dispatch_key} '
-                                        '(only CPU and CUDA are valid)')
-                        dispatch[dispatch_key] = UfuncMetadata(dtype_dispatch)
 
             assert not (len(dispatch) == 1 and redundant_composite_implicit_autograd), \
                 "unnecessary dispatch table for this function; just delete the dispatch " \
@@ -435,6 +438,23 @@ class NativeFunction:
             "cannot specify both CompositeExplicitAutograd and CompositeImplicitAutograd on a single kernel; each " \
             "strictly subsumes the other.  If you wanted to provide an explicit autograd " \
             "implementation, specify CompositeExplicitAutograd; otherwise specify CompositeImplicitAutograd only"
+
+        very_raw_ufunc_inner_loop = e.pop('ufunc_inner_loop', {})
+        raw_ufunc_inner_loop: Dict[str, object]
+        if very_raw_ufunc_inner_loop is str:
+            raw_ufunc_inner_loop = {'Generic': raw_ufunc_inner_loop}
+        else:
+            assert isinstance(very_raw_ufunc_inner_loop, dict)
+            raw_ufunc_inner_loop = very_raw_ufunc_inner_loop
+
+        ufunc_inner_loop = {}
+        for k, vo in raw_ufunc_inner_loop.items():
+            if k == '__line__':
+                continue
+            assert isinstance(k, str), f'ufunc_inner_loop key is not a str: {k}'
+            ufunc_key = UfuncKey.parse(k)
+            assert isinstance(vo, str), f'ufunc_inner_loop value is not a str: {v}'
+            ufunc_inner_loop[ufunc_key] = UfuncInnerLoop.parse(vo, ufunc_key)
 
         if structured_delegate:
             # Structured functions MUST have a dispatch table
@@ -470,6 +490,7 @@ class NativeFunction:
             structured=structured,
             structured_delegate=structured_delegate,
             structured_inherits=structured_inherits,
+            ufunc_inner_loop=ufunc_inner_loop,
             manual_kernel_registration=manual_kernel_registration,
             manual_cpp_binding=manual_cpp_binding,
             python_module=python_module,
@@ -671,93 +692,21 @@ class BackendMetadata:
     # However, external backends like XLA can indendently toggle which ops are structured.
     structured: bool
 
-# CPU ufunc implementations must define a scalar element-by-element
-# implementation, and can optionally also provided a vectorized version
-@dataclass
-class UfuncCPUKernel:
-    scalar_fn: str
-    vector_fn: Optional[str]
+@dataclass(frozen=True)
+class UfuncInnerLoop:
+    name: str
+    supported_dtypes: Set[ScalarType]
+    # key is stored here because it affects the semantics of name,
+    # so its helpful to have them together for further processing
+    ufunc_key: UfuncKey
 
     @staticmethod
-    def from_yaml(ei: object) -> 'UfuncCPUKernel':
-        if isinstance(ei, str):
-            return UfuncCPUKernel(
-                scalar_fn=ei,
-                vector_fn=ei,
-            )
-
-        assert isinstance(ei, dict)
-        e = ei.copy()
-        scalar_fn = e.pop('Scalar')
-        assert isinstance(scalar_fn, str)
-
-        vector_fn = e.pop('Vector', None)
-        assert vector_fn is None or isinstance(vector_fn, str)
-
-        e.pop('__line__', None)
-        assert not e, f"leftover entries: {e}"
-
-        return UfuncCPUKernel(
-            scalar_fn=scalar_fn,
-            vector_fn=vector_fn,
-        )
-
-# CUDA ufunc implementations must define an element-by-element implementation
-# that takes all inputs as CUDA tensors.  Binary ufunc implementations can also
-# provide specializations for either argument being a CPU scalar.
-@dataclass(frozen=True)
-class UfuncCUDAKernel:
-    all_tensor_fn: str
-    # NB: so far no way to disable scalar generation; should be some special str
-    # sigil
-    # TODO: scalar-ization can be made to work for variadic
-    tensor_scalar_fn: Optional[str]
-    scalar_tensor_fn: Optional[str]
-
-    @staticmethod
-    def from_yaml(ei: object, func: FunctionSchema) -> 'UfuncCUDAKernel':
-        if isinstance(ei, str):
-            fn = UfuncGenericFn(ei)
-            return UfuncCUDAKernel(
-                all_tensor_fn = fn,
-                tensor_scalar_fn = None,
-                scalar_tensor_fn = None,
-            )
-
-        assert isinstance(ei, dict)
-        e = ei.copy()
-        all_tensor_fn = e.pop('AllTensor')
-        assert isinstance(all_tensor_fn, str)
-        tensor_scalar_fn = e.pop('TensorScalar', None)
-        assert tensor_scalar_fn is None or isinstance(tensor_scalar_fn, str)
-        scalar_tensor_fn = e.pop('ScalarTensor', None)
-        assert scalar_tensor_fn is None or isinstance(scalar_tensor_fn, str)
-
-        e.pop('__line__', None)
-        assert not e, f'leftover entries: {e}'
-
-        return UfuncCUDAKernel(
-            all_tensor_fn=UfuncGenericFn(all_tensor_fn),
-            tensor_scalar_fn=UfuncSpecializedFn(tensor_scalar_fn) if tensor_scalar_fn is not None else None,
-            scalar_tensor_fn=UfuncSpecializedFn(scalar_tensor_fn) if scalar_tensor_fn is not None else None,
-        )
-
-
-# Loss of static type information here
-UfuncKernel = Union[UfuncCPUKernel, UfuncCUDAKernel]
-
-@dataclass(frozen=True)
-class UfuncMetadata:
-    dtype_dispatch: Dict[ScalarType, UfuncKernel]
-
-    # ufuncs are always structured
-    structured: bool = True
-
-
-# This represents per-backend "entries" in the dispatch table.  BackendMetadata
-# is the good old fashioned representation, whereas ufunc is a more structured
-# representation that works for pointwise operations
-DispatchMetadata = Union[BackendMetadata, UfuncMetadata]
+    def parse(value: str, ufunc_key: UfuncKey) -> 'UfuncInnerLoop':
+        name, supported_dtypes_str = value.split(' ', 2)
+        assert supported_dtypes_str[0] == '('
+        assert supported_dtypes_str[-1] == ')'
+        supported_dtypes = {ScalarType.parse(k) for k in supported_dtypes_str[1:-1].split(', ')}
+        return UfuncInnerLoop(name=name, supported_dtypes=supported_dtypes, ufunc_key=ufunc_key)
 
 
 # BackendIndex represents a backend.
@@ -776,12 +725,12 @@ class BackendIndex:
     # Whether the backend is in-tree (CPU/CUDA) or out-of-tree (XLA)
     external: bool
     # Other backend-specific information that is on a per-operator basis
-    index: Dict['OperatorName', DispatchMetadata]
+    index: Dict['OperatorName', BackendMetadata]
 
     @staticmethod
     def grow_index(
-            parent_index: Dict[DispatchKey, Dict['OperatorName', DispatchMetadata]],
-            child_index: Dict[DispatchKey, Dict['OperatorName', DispatchMetadata]]
+            parent_index: Dict[DispatchKey, Dict['OperatorName', BackendMetadata]],
+            child_index: Dict[DispatchKey, Dict['OperatorName', BackendMetadata]]
     ) -> None:
         for k, v in child_index.items():
             for op_name, metadata in v.items():
@@ -805,7 +754,7 @@ class BackendIndex:
         assert isinstance(r, BackendMetadata)
         return r
 
-    def get_kernel(self, g: Union[NativeFunction, NativeFunctionsGroup]) -> Optional[DispatchMetadata]:
+    def get_kernel(self, g: Union[NativeFunction, NativeFunctionsGroup]) -> Optional[BackendMetadata]:
         if isinstance(g, NativeFunction):
             f = g
         elif isinstance(g, NativeFunctionsGroup):

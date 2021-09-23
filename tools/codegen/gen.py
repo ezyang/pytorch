@@ -14,7 +14,7 @@ from tools.codegen.code_template import CodeTemplate
 from tools.codegen.model import (Argument, DispatchKey, FunctionSchema,
                                  Location, NativeFunction,
                                  NativeFunctionsGroup, OperatorName,
-                                 BackendIndex, BackendMetadata, UfuncMetadata,
+                                 BackendIndex, BackendMetadata,
                                  OptionalType, SchemaKind, SelfArgument,
                                  TensorOptionsArguments, Type, Variant,
                                  assert_never, is_cuda_dispatch_key,
@@ -85,7 +85,7 @@ def parse_native_yaml(path: str) -> ParsedYaml:
             es = yaml.load(f, Loader=LineLoader)
         assert isinstance(es, list)
         rs: List[NativeFunction] = []
-        bs: Dict[DispatchKey, Dict[OperatorName, DispatchMetadata]] = defaultdict(dict)
+        bs: Dict[DispatchKey, Dict[OperatorName, BackendMetadata]] = defaultdict(dict)
         for e in es:
             assert isinstance(e.get('__line__'), int), e
             loc = Location(path, e['__line__'])
@@ -104,7 +104,6 @@ def parse_native_yaml(path: str) -> ParsedYaml:
         _GLOBAL_PARSE_NATIVE_YAML_CACHE[path] = ParsedYaml(rs, indices)
 
     return _GLOBAL_PARSE_NATIVE_YAML_CACHE[path]
-
 
 # Some assertions are already performed during parsing, but those are only within a single NativeFunction.
 # Assertions here are meant to be performed across NativeFunctions.
