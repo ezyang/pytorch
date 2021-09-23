@@ -65,6 +65,10 @@ tensorOptionsT = BaseCppType('at', 'TensorOptions')
 typeAndSizeT = BaseCppType('torch::autograd::generated', 'TypeAndSize')
 tensorGeometryT = BaseCppType('at', 'TensorGeometry')
 
+# variable types, this is a slight abuse
+scalar_t = BaseCppType('', 'scalar_t')
+opmath_t = BaseCppType('', 'opmath_t')
+
 ScalarTypeToCppMapping: Dict[ScalarType, BaseCppType] = {
     ScalarType.Byte: byteT,
     ScalarType.Char: charT,

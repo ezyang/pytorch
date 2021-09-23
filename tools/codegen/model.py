@@ -213,8 +213,10 @@ DTYPE_CLASSES["FloatingAndComplex"] = DTYPE_CLASSES["Floating"] | DTYPE_CLASSES[
 # TODO: freeze this dict somehow
 
 
-class UfuncKey(IntEnum):
+class UfuncKey(Enum):
     # NB: order matters, it specifies precedence (first = higher precedence)
+    CUDAFunctor = auto()
+    CUDAFunctorOnOther = auto()
     CUDAFunctorOnSelf = auto()
     ScalarOnly = auto()
     Generic = auto()
@@ -292,7 +294,7 @@ class NativeFunction:
 
     # If non-empty, this kernel is subject to ufunc codegen.
     # Sorted by ufunc_key
-    ufunc_inner_loop: List[UfuncInnerLoop]
+    ufunc_inner_loop: Dict[UfuncKey, UfuncInnerLoop]
 
     # Whether or not this out functions is a "structured kernel".  Structured
     # kernels are defined a little differently from normal kernels; in
@@ -446,9 +448,9 @@ class NativeFunction:
             "implementation, specify CompositeExplicitAutograd; otherwise specify CompositeImplicitAutograd only"
 
         raw_ufunc_inner_loop = e.pop('ufunc_inner_loop', {})
-        ufunc_inner_loop = []
+        ufunc_inner_loop = {}
         if isinstance(raw_ufunc_inner_loop, str):
-            ufunc_inner_loop.append(UfuncInnerLoop.parse(raw_ufunc_inner_loop, UfuncKey.Generic))
+            ufunc_inner_loop[UfuncKey.Generic] = UfuncInnerLoop.parse(raw_ufunc_inner_loop, UfuncKey.Generic)
         elif isinstance(raw_ufunc_inner_loop, dict):
             for k, vo in raw_ufunc_inner_loop.items():
                 if k == '__line__':
@@ -456,10 +458,9 @@ class NativeFunction:
                 assert isinstance(k, str), f'ufunc_inner_loop key is not a str: {k}'
                 assert isinstance(vo, str), f'ufunc_inner_loop value is not a str: {v}'
                 ufunc_key = UfuncKey.parse(k)
-                ufunc_inner_loop.append(UfuncInnerLoop.parse(vo, ufunc_key))
+                ufunc_inner_loop[ufunc_key] = UfuncInnerLoop.parse(vo, ufunc_key)
         else:
             raise AssertionError(f'ufunc_inner_loop not str or dict: {raw_ufunc_inner_loop}')
-        ufunc_inner_loop.sort(key=lambda loop: loop.ufunc_key)
 
         if structured_delegate:
             # Structured functions MUST have a dispatch table
