@@ -6,11 +6,13 @@ from tools.codegen.model import (Argument, BaseTy, BaseType, ListType,
 from tools.codegen.api.types import (ArgName, BaseCType, Binding, ArrayRefCType,
                                      ConstRefCType, OptionalCType, NamedCType,
                                      tensorT, scalarT, intArrayRefT, dimnameListT,
-                                     optionalTensorRefT, optionalScalarRefT, CType)
+                                     optionalTensorRefT, optionalScalarRefT, CType,
+                                     BaseCppType)
 
 from tools.codegen.api import cpp
 from tools.codegen.utils import mapMaybe
 
+from dataclasses import dataclass
 from typing import Union, List, Optional
 
 def kernel_name(g: NativeFunctionsGroup) -> str:
@@ -58,7 +60,7 @@ def ufunctor_ctor_type(t: Type, *, binds: ArgName, scalar_t: BaseCppType) -> Nam
 # NB: CUDA only
 def ufunctor_apply_type(t: Type, *, binds: ArgName, scalar_t: BaseCppType) -> NamedCType:
     if t == BaseType(BaseTy.Tensor):
-        return NamedCType(binds, scalar_t)
+        return NamedCType(binds, BaseCType(scalar_t))
     else:
         raise AssertionError(f"unrecognized type {repr(t)}")
 
@@ -113,16 +115,16 @@ def ufunctor_arguments(g: NativeFunctionsGroup, *, scalar_tensor: Optional[int],
         if a.type.is_tensor_like():
             if scalar_tensor == 0:
                 # put it in the ctor anyway
-                ctor.append(ufunctor_ctor_argument(a))
+                ctor.append(ufunctor_ctor_argument(a, scalar_t=scalar_t))
                 scalar_tensor = None
             else:
                 if scalar_tensor is not None:
                     scalar_tensor -= 1
-                apply.append(ufunctor_apply_argument(a))
+                apply.append(ufunctor_apply_argument(a, scalar_t=scalar_t))
         else:
-            ufunctor_ctor_agument(a)
+            ufunctor_ctor_argument(a, scalar_t=scalar_t)
     assert scalar_tensor is None
     return UfunctorBindings(ctor=ctor, apply=apply)
 
-def ufunc_arguments(g: NativeFunctionsGroup, *, compute_t: CType, compute_t: BaseCppType) -> List[Binding]
+def ufunc_arguments(g: NativeFunctionsGroup, *, compute_t: BaseCppType) -> List[Binding]:
     return [ufunc_argument(a, compute_t=compute_t) for a in g.functional.func.arguments.flat_non_out]

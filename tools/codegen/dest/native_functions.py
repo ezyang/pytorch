@@ -2,7 +2,8 @@ from typing import List, Union, Optional
 
 from tools.codegen.context import with_native_function_and_index
 from tools.codegen.utils import mapMaybe
-from tools.codegen.model import NativeFunction, NativeFunctionsGroup, BackendIndex, BackendMetadata, UfuncMetadata, assert_never
+from tools.codegen.model import NativeFunction, NativeFunctionsGroup, BackendIndex, \
+    BackendMetadata, assert_never, is_ufunc_dispatch_key
 from tools.codegen.api.types import kernel_signature
 import tools.codegen.api.meta as meta
 import tools.codegen.api.structured as structured
@@ -29,12 +30,10 @@ def gen_structured(g: NativeFunctionsGroup, backend_index: BackendIndex) -> List
     metadata = backend_index.get_kernel(g)
     if metadata is None:
         return []
-    if isinstance(metadata, BackendMetadata):
-        kernel = metadata.kernel
-    elif isinstance(metadata, UfuncMetadata):
+    if is_ufunc_dispatch_key(backend_index.dispatch_key) and g.functional.ufunc_inner_loop:
         kernel = ufunc.kernel_name(g)
     else:
-        assert_never(metadata)
+        kernel = metadata.kernel
     prefix = '' if backend_index.external else 'TORCH_API '
     return [f"""\
 struct {prefix}structured_{kernel} : public at::meta::structured_{meta_name} {{

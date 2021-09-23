@@ -11,7 +11,7 @@ from tools.codegen.model import (DispatchKey, NativeFunction,
                                  TensorOptionsArguments,
                                  DeviceCheckType, Argument, assert_never,
                                  is_cuda_dispatch_key, BackendIndex,
-                                 gets_generated_out_inplace_wrapper, UfuncMetadata,
+                                 gets_generated_out_inplace_wrapper,
                                  BackendMetadata)
 from tools.codegen.api.types import (BaseCType, Binding, ConstRefCType,
                                      CppSignature, CppSignatureGroup,
@@ -532,17 +532,17 @@ return {sig.name()}({', '.join(e.expr for e in translate(cpp_sig.arguments(), si
                 parent_class = f"at::meta::structured_{meta.name(self.g)}"
             else:
                 metadata = self.backend_index.get_kernel(self.g)
-                assert metadata is not None
-                if isinstance(metadata, BackendMetadata):
-                    # Conventional
-                    class_name = f"structured_{metadata.kernel}_{k.name}"
-                    parent_class = f"{self.cpp_namespace}::structured_{metadata.kernel}"
-                elif isinstance(metadata, UfuncMetadata):
+                if self.g.functional.ufunc_inner_loop and \
+                        is_ufunc_dispatch_key(self.backend_index.dispatch_key):
                     # Ufunc, This is all going to be codegen'ed
+                    assert metadata is None
                     class_name = f"structured_{ufunc.kernel_name(self.g)}_{k.name}"
                     parent_class = f"{self.cpp_namespace}::structured_{ufunc.kernel_name(self.g)}"
                 else:
-                    assert_never(metadata)
+                    # Conventional
+                    assert metadata is not None
+                    class_name = f"structured_{metadata.kernel}_{k.name}"
+                    parent_class = f"{self.cpp_namespace}::structured_{metadata.kernel}"
 
             if is_cuda_dispatch_key(self.backend_index.dispatch_key):
                 device_check_args = itertools.chain(

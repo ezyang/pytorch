@@ -1158,8 +1158,7 @@ def main() -> None:
             })
 
         for g in structured_native_functions:
-            kernel = backend_indices[dispatch_key].get_kernel(g)
-            if not isinstance(kernel, UfuncMetadata):
+            if not g.functional.ufunc_inner_loop:
                 continue
             name = g.functional.func.name.name
             if dispatch_key is DispatchKey.CPU:
@@ -1177,7 +1176,7 @@ def main() -> None:
                     # included
                     'meta_declaration': '',
                     'native_declaration': '',
-                    'namespaced_definitions': dest.compute_ufunc_cuda(g, kernel),
+                    'namespaced_definitions': dest.compute_ufunc_cuda(g),
                 })
             else:
                 raise AssertionError(f'unrecognized {dispatch_key} for ufunc')

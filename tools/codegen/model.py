@@ -2,7 +2,7 @@ import re
 
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Iterator, Tuple, Set, NoReturn, Sequence, Callable, Union
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 import itertools
 import functools
 
@@ -151,6 +151,10 @@ def is_cuda_dispatch_key(dk: DispatchKey) -> bool:
 def is_structured_dispatch_key(dk: DispatchKey) -> bool:
     return dk in STRUCTURED_DISPATCH_KEYS
 
+def is_ufunc_dispatch_key(dk: DispatchKey) -> bool:
+    # For now, ufunc dispatch keys coincide with structured keys
+    return dk in STRUCTURED_DISPATCH_KEYS
+
 # This is oddly named ScalarType and not DType for symmetry with C++
 class ScalarType(Enum):
     Byte = auto()
@@ -209,10 +213,11 @@ DTYPE_CLASSES["FloatingAndComplex"] = DTYPE_CLASSES["Floating"] | DTYPE_CLASSES[
 # TODO: freeze this dict somehow
 
 
-class UfuncKey(Enum):
-    Generic = auto()
-    ScalarOnly = auto()
+class UfuncKey(IntEnum):
+    # NB: order matters, it specifies precedence (first = higher precedence)
     CUDAFunctorOnSelf = auto()
+    ScalarOnly = auto()
+    Generic = auto()
 
     def __str__(self) -> str:
         return self.name
@@ -286,7 +291,8 @@ class NativeFunction:
     loc: 'Location'
 
     # If non-empty, this kernel is subject to ufunc codegen.
-    ufunc_inner_loop: Dict[UfuncKey, UfuncInnerLoop]
+    # Sorted by ufunc_key
+    ufunc_inner_loop: List[UfuncInnerLoop]
 
     # Whether or not this out functions is a "structured kernel".  Structured
     # kernels are defined a little differently from normal kernels; in
@@ -439,22 +445,21 @@ class NativeFunction:
             "strictly subsumes the other.  If you wanted to provide an explicit autograd " \
             "implementation, specify CompositeExplicitAutograd; otherwise specify CompositeImplicitAutograd only"
 
-        very_raw_ufunc_inner_loop = e.pop('ufunc_inner_loop', {})
-        raw_ufunc_inner_loop: Dict[str, object]
-        if very_raw_ufunc_inner_loop is str:
-            raw_ufunc_inner_loop = {'Generic': raw_ufunc_inner_loop}
+        raw_ufunc_inner_loop = e.pop('ufunc_inner_loop', {})
+        ufunc_inner_loop = []
+        if isinstance(raw_ufunc_inner_loop, str):
+            ufunc_inner_loop.append(UfuncInnerLoop.parse(raw_ufunc_inner_loop, UfuncKey.Generic))
+        elif isinstance(raw_ufunc_inner_loop, dict):
+            for k, vo in raw_ufunc_inner_loop.items():
+                if k == '__line__':
+                    continue
+                assert isinstance(k, str), f'ufunc_inner_loop key is not a str: {k}'
+                assert isinstance(vo, str), f'ufunc_inner_loop value is not a str: {v}'
+                ufunc_key = UfuncKey.parse(k)
+                ufunc_inner_loop.append(UfuncInnerLoop.parse(vo, ufunc_key))
         else:
-            assert isinstance(very_raw_ufunc_inner_loop, dict)
-            raw_ufunc_inner_loop = very_raw_ufunc_inner_loop
-
-        ufunc_inner_loop = {}
-        for k, vo in raw_ufunc_inner_loop.items():
-            if k == '__line__':
-                continue
-            assert isinstance(k, str), f'ufunc_inner_loop key is not a str: {k}'
-            ufunc_key = UfuncKey.parse(k)
-            assert isinstance(vo, str), f'ufunc_inner_loop value is not a str: {v}'
-            ufunc_inner_loop[ufunc_key] = UfuncInnerLoop.parse(vo, ufunc_key)
+            raise AssertionError(f'ufunc_inner_loop not str or dict: {raw_ufunc_inner_loop}')
+        ufunc_inner_loop.sort(key=lambda loop: loop.ufunc_key)
 
         if structured_delegate:
             # Structured functions MUST have a dispatch table

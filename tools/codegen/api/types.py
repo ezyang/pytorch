@@ -30,9 +30,19 @@ class BaseCppType:
 
 # The set of all non-templated, valid, fully-qualified names of C++ types that are used in the codegen.
 # Templated types get their own dataclass, mainly to make namespace parsing easier.
-intT = BaseCppType('', 'int64_t')
+byteT = BaseCppType('', 'uint8_t')
+charT = BaseCppType('', 'int8_t')
+shortT = BaseCppType('', 'int16_t')
+intT = BaseCppType('', 'int32_t')  # WARNING: THIS IS 32-BIT!!!
+longT = BaseCppType('', 'int64_t')
+halfT = BaseCppType('at', 'Half')
 doubleT = BaseCppType('', 'double')
+floatT = BaseCppType('', 'float')
+complexHalfT = BaseCppType('c10', 'complex<c10::Half>')  # stuffing template param here is an abuse
+complexFloatT = BaseCppType('c10', 'complex<float>')
+complexDoubleT = BaseCppType('c10', 'complex<double>')
 boolT = BaseCppType('', 'bool')
+bfloat16T = BaseCppType('at', 'BFloat16')
 voidT = BaseCppType('', 'void')
 stringT = BaseCppType('c10', 'string_view')
 generatorT = BaseCppType('at', 'Generator')
@@ -55,8 +65,24 @@ tensorOptionsT = BaseCppType('at', 'TensorOptions')
 typeAndSizeT = BaseCppType('torch::autograd::generated', 'TypeAndSize')
 tensorGeometryT = BaseCppType('at', 'TensorGeometry')
 
+ScalarTypeToCppMapping: Dict[ScalarType, BaseCppType] = {
+    ScalarType.Byte: byteT,
+    ScalarType.Char: charT,
+    ScalarType.Short: shortT,
+    ScalarType.Int: intT,
+    ScalarType.Long: longT,
+    ScalarType.Half: halfT,
+    ScalarType.Float: floatT,
+    ScalarType.Double: doubleT,
+    ScalarType.ComplexHalf: complexHalfT,
+    ScalarType.ComplexFloat: complexFloatT,
+    ScalarType.ComplexDouble: complexDoubleT,
+    ScalarType.Bool: boolT,
+    ScalarType.BFloat16: bfloat16T,
+}
+
 BaseTypeToCppMapping: Dict[BaseTy, BaseCppType] = {
-    BaseTy.int: intT,
+    BaseTy.int: longT,
     BaseTy.float: doubleT,
     BaseTy.bool: boolT,
     BaseTy.str: stringT,

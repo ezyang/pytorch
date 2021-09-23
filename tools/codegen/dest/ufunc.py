@@ -3,10 +3,10 @@ from typing import Union
 from typing_extensions import Literal
 from tools.codegen.api.translate import translate
 from tools.codegen.utils import Target
-from tools.codegen.model import (NativeFunctionsGroup, UfuncMetadata, UfuncCUDAKernel)
+from tools.codegen.model import (NativeFunctionsGroup)
 import tools.codegen.api.ufunc as ufunc
 import tools.codegen.api.structured as structured
-from tools.codegen.api.types import StructuredImplSignature
+from tools.codegen.api.types import StructuredImplSignature, scalar_t, opmath_t
 
 # NB: not bothering to generate dispatch stub forward declaration in header,
 # we can just paste it whereever necessary
@@ -92,16 +92,83 @@ DEFINE_DISPATCH({stub_name(g)})
 #
 # IDEA: don't use precanned templates at all, do it all by hand here
 
+def eligible_for_binary_scalar_specialization(g: NativeFunctionsGroup) -> bool:
+    assert False
 
-def compute_ufunc_cuda(g: NativeFunctionsGroup, metadata: UfuncMetadata) -> str:
+@dataclass(frozen=True)
+class InnerOuter:
+    inner: str
+    outer: str
+
+def compute_ufunc_cuda_per_dtype(g: NativeFunctionsGroup, dtype: ScalarType, parent_ctx: List[Union[Binding, Expr]]) -> InnerOuter:
+    functors = []
+    body = "using opmath_t = at::opmath_type<scalar_t>;"
+    body += "if (false) {{}}\n";
+    if eligible_for_binary_scalar_specialization(g):
+        # TODO: in principle, can support scalar specialization for arbitrary
+        # n-ary operators, but if you actually want to do it also have to update
+        # TensorIterator to accept this
+        for scalar_tensor, tensor_name in enumerate(['self', 'other']):
+            scalar_idx = scalar_tensor + 1
+            ctx = parent_ctx.clone()
+            ctx.append(Expr(
+                expr=f"__scalar_{tensor_name}",
+                type=NamedCType(tensor_name, BaseCType(opmath_t)),
+            ))
+            # find the correct inner loop to use here
+            inner_loop: Optional[UfuncInnerLoop] = None
+            for loop in g.functional.ufunc_inner_loop:
+                if dtype not in loop.supported_dtypes:
+                    continue
+                # NB: intentionally flipped: if we make other a scalar, then the
+                # functor takes self as argument
+                if (tensor_name == 'other' and loop.ufunc_key is UfuncKey.CUDAFunctorOnSelf) or \
+                        loop.ufunc_key is UfuncKey.Generic:
+                    inner_loop = loop
+                    break
+            assert inner_loop is not None, \
+                f"was expecting to specialize {tensor_name} to scalar, but no eligible ufunc was found"
+
+            functor_sig = UfunctorSignature(g, scalar_tensor=scalar_tensor, f"TODOTODO")
+            if inner_loop.ufunc_key is UfuncKey.Generic:
+                pass
+
+            body += """\
+else if (iter.is_cpu_scalar({scalar_idx})) {{
+  auto __scalar_{tensor_name} = iter.scalar_value<opmath_t>({scalar_idx});
+  iter.remove_operand({scalar_idx});
+}}"""
+    body += ""
+    return InnerOuter(inner=body, outer="\n\n".join(functors))
+
+def compute_ufunc_cuda(g: NativeFunctionsGroup) -> str:
     # struct Functor {
     #   Functor(... UFunctor ...) {
     #   }
     # }
 
-
     sig = StructuredImplSignature(g, ufunc.kernel_name(g))
 
+    dtype_cases = []
+    for dtype in ScalarType:
+        # check if we have ANY implementation of the dtype.  We'll get
+        # more detailed shortly
+        # WARNING: quadratic police.  could probably preindex but whatever
+        for loop in g.functional.ufunc_inner_loop:
+            if dtype in loop.supported_dtypes:
+                break
+        else:
+            continue
+        dtype_cases.append(f"""
+AT_PRIVATE_CASE_TYPE("{sig.name}", at::ScalarType::{dtype}, float,
+  [&]() {{
+    {compute_ufunc_cuda_dtype_body(g, dtype, sig.arguments())}
+  }}
+)
+""")
+
+
+'''
     dtype_cases = []
     functors = []
 
@@ -142,7 +209,7 @@ struct {ufunctor_sig.name} {{
             else:
                 assert_never(fn)
             loop_body += f"""else if (iter.is_cpu_scalar(1)) {{
-  auto functor = {}(iter.scalar_value<opmath_t>(1));
+  auto functor = (iter.scalar_value<opmath_t>(1));
   iter.remove_operand(1);
   {inner}
 }}"""
@@ -157,13 +224,6 @@ struct {ufunctor_sig.name} {{
 }}
 """
 
-        dtype_cases.append(f"""
-AT_PRIVATE_CASE_TYPE("{sig.name}", at::ScalarType::{dtype}, float,
-  [&]() {{
-    {loop_body}
-  }}
-)
-""")
 
     dtype_cases_str = "\n".join(dtype_cases)
 
@@ -182,3 +242,4 @@ AT_PRIVATE_CASE_TYPE("{sig.name}", at::ScalarType::{dtype}, float,
   }}
 }}
 """
+'''
