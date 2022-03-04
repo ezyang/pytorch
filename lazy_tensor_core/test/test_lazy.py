@@ -42,5 +42,28 @@ class TestLazyTensor(JitTestCase):
         torch.testing.assert_allclose(inp_copy_grad.cpu(), inp_grad.cpu())
 
 
+class SymbolicIntTest(JitTestCase):
+    def test_narrow_copy_with_symbolic_int(self):
+        a = torch.rand(10)
+        LENGTH = 5
+        s = torch._C.SymbolicOrConcreteInt.create(LENGTH)
+        b = a.narrow_copy(0,0,s)
+        c = a.narrow(0,0,LENGTH)
+        torch.testing.assert_allclose(b, c)
+
+    def test_narrow_copy(self):
+        a = torch.rand(10)
+        LENGTH = 5
+        b = a.narrow_copy(0,0,LENGTH)
+        c = a.narrow(0,0,LENGTH)
+        torch.testing.assert_allclose(b, c)
+
+    def test_add_on_concrete_ints(self):
+        s = torch._C.SymbolicOrConcreteInt.create(5)
+        s2 = torch._C.SymbolicOrConcreteInt.create(3)
+        self.assertEqual(int(s + s2), 8)
+
+
+    
 if __name__ == '__main__':
     run_tests()
