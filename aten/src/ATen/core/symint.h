@@ -15,6 +15,10 @@ class TORCH_API SymInt {
         return data_;
     }
 
+    int64_t expect_concrete() const {
+        return data_;
+    }
+
     bool operator==(const SymInt& p2)
     {
         TORCH_INTERNAL_ASSERT("NYI");

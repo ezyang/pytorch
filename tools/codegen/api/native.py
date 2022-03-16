@@ -4,7 +4,7 @@ from tools.codegen.model import (Argument, FunctionSchema, Return,
 from tools.codegen.api.types import (ArgName, BaseCType, Binding,
                                      ConstRefCType, NamedCType, CType, MutRefCType, ListCType,
                                      OptionalCType, tensorT, scalarT, layoutT,
-                                     deviceT, boolT, scalarTypeT)
+                                     deviceT, boolT, scalarTypeT, longT)
 from tools.codegen.api import cpp
 from tools.codegen import local
 from tools.codegen.utils import assert_never
@@ -41,6 +41,8 @@ def argumenttype_type(t: Type, *, mutable: bool, binds: ArgName) -> NamedCType:
         return NamedCType(binds, ConstRefCType(BaseCType(scalarT)))
     elif str(t) == 'Scalar?':
         return NamedCType(binds, ConstRefCType(OptionalCType(BaseCType(scalarT))))
+    elif str(t) == 'SymInt':
+        return NamedCType(binds, BaseCType(longT))
     return cpp.argumenttype_type(t, mutable=mutable, binds=binds)
 
 def returns_type(rs: Sequence[Return]) -> CType:

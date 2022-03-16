@@ -4,8 +4,8 @@ from tools.codegen.api.types import (BaseCType, Binding, ConstRefCType,
                                      NamedCType, SpecialArgName, tensorT,
                                      memoryFormatT, tensorOptionsT, scalarTypeT,
                                      boolT, deviceT, layoutT, optionalTensorRefT,
-                                     scalarT, optionalScalarRefT,
-                                     VectorCType, longT, intArrayRefT)
+                                     scalarT, optionalScalarRefT, symIntT,
+                                     VectorCType, longT, intArrayRefT, longT)
 
 # This file implements a small program synthesis engine that implements
 # conversions between one API to another.
@@ -207,6 +207,12 @@ Check this module for more information.
             return direct_solve(NamedCType(goal.name, optionalScalar_ctype))
         elif goal.type == BaseCType(optionalTensorRefT):
             return direct_solve(NamedCType(goal.name, optionalTensor_ctype))
+
+        # If there are other conversions to int, you will need to test them
+        # here
+        elif goal.type == BaseCType(longT):
+            symint = direct_solve(NamedCType(goal.name, BaseCType(symIntT)))
+            return f'{symint}.expect_concrete()'
 
 
         # Note [translation from C++ reference to value types]
