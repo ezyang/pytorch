@@ -1879,6 +1879,17 @@
     SparseCPU, SparseCUDA: empty_sparse
     SparseCsrCPU, SparseCsrCUDA: empty_sparse_csr
 
+
+- func: _empty_maybe_quantized.memory_format(int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor
+  dispatch:
+    CPU: empty_cpu
+    CUDA: empty_cuda
+    Meta: empty_meta
+    MkldnnCPU: empty_mkldnn
+    SparseCPU, SparseCUDA: empty_sparse
+    SparseCsrCPU, SparseCsrCUDA: empty_sparse_csr
+    QuantizedCPU, QuantizedCUDA: empty_unknown_quantized
+
 # We do not make new_empty a composite that calls into new_empty_strided, as the strided version
 # is significantly more difficult to implement by different backends
 - func: new_empty(Tensor self, int[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor
