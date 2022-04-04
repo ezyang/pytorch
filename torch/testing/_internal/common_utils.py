@@ -2124,64 +2124,65 @@ class TestCase(expecttest.TestCase):
             exact_stride=False,
             exact_is_coalesced=False
     ):
-        # Hide this function from `pytest`'s traceback
-        __tracebackhide__ = True
+        with torch.overrides._no_torch_function_mode():
+            # Hide this function from `pytest`'s traceback
+            __tracebackhide__ = True
 
-        # numpy's dtypes are a superset of what PyTorch supports. In case we encounter an unsupported dtype, we fall
-        # back to an elementwise comparison. Note that this has to happen here and not for example in
-        # `TensorOrArrayPair`, since at that stage we can no longer split the array into its elements and perform
-        # multiple comparisons.
-        if any(
-            isinstance(input, np.ndarray) and not has_corresponding_torch_dtype(input.dtype) for input in (x, y)
-        ):
-            def to_list(input):
-                return input.tolist() if isinstance(input, (torch.Tensor, np.ndarray)) else list(input)
+            # numpy's dtypes are a superset of what PyTorch supports. In case we encounter an unsupported dtype, we fall
+            # back to an elementwise comparison. Note that this has to happen here and not for example in
+            # `TensorOrArrayPair`, since at that stage we can no longer split the array into its elements and perform
+            # multiple comparisons.
+            if any(
+                isinstance(input, np.ndarray) and not has_corresponding_torch_dtype(input.dtype) for input in (x, y)
+            ):
+                def to_list(input):
+                    return input.tolist() if isinstance(input, (torch.Tensor, np.ndarray)) else list(input)
 
-            x = to_list(x)
-            y = to_list(y)
-        # When comparing a sequence of numbers to a tensor, we need to convert the sequence to a tensor here.
-        # Otherwise, the pair origination of `assert_equal` will fail, because the sequence is recognized as container
-        # that should be checked elementwise while the tensor is not.
-        elif isinstance(x, torch.Tensor) and isinstance(y, Sequence):
-            y = torch.as_tensor(y, dtype=x.dtype, device=x.device)
-        elif isinstance(x, Sequence) and isinstance(y, torch.Tensor):
-            x = torch.as_tensor(x, dtype=y.dtype, device=y.device)
+                x = to_list(x)
+                y = to_list(y)
+            # When comparing a sequence of numbers to a tensor, we need to convert the sequence to a tensor here.
+            # Otherwise, the pair origination of `assert_equal` will fail, because the sequence is recognized as container
+            # that should be checked elementwise while the tensor is not.
+            elif isinstance(x, torch.Tensor) and isinstance(y, Sequence):
+                y = torch.as_tensor(y, dtype=x.dtype, device=x.device)
+            elif isinstance(x, Sequence) and isinstance(y, torch.Tensor):
+                x = torch.as_tensor(x, dtype=y.dtype, device=y.device)
 
-        assert_equal(
-            x,
-            y,
-            pair_types=(
-                NonePair,
-                RelaxedBooleanPair,
-                RelaxedNumberPair,
-                TensorOrArrayPair,
-                StringPair,
-                SetPair,
-                TypePair,
-                ObjectPair,
-            ),
-            sequence_types=(
-                Sequence,
-                torch.storage._TypedStorage,
-                Sequential,
-                ModuleList,
-                ParameterList,
-                ScriptList,
-                torch.utils.data.dataset.Subset,
-            ),
-            mapping_types=(Mapping, ModuleDict, ParameterDict, ScriptDict),
-            rtol=rtol,
-            rtol_override=self.rel_tol,
-            atol=atol,
-            atol_override=self.precision,
-            equal_nan=equal_nan,
-            check_device=exact_device,
-            check_dtype=exact_dtype,
-            check_layout=exact_layout,
-            check_stride=exact_stride,
-            check_is_coalesced=exact_is_coalesced,
-            msg=msg,
-        )
+            assert_equal(
+                x,
+                y,
+                pair_types=(
+                    NonePair,
+                    RelaxedBooleanPair,
+                    RelaxedNumberPair,
+                    TensorOrArrayPair,
+                    StringPair,
+                    SetPair,
+                    TypePair,
+                    ObjectPair,
+                ),
+                sequence_types=(
+                    Sequence,
+                    torch.storage._TypedStorage,
+                    Sequential,
+                    ModuleList,
+                    ParameterList,
+                    ScriptList,
+                    torch.utils.data.dataset.Subset,
+                ),
+                mapping_types=(Mapping, ModuleDict, ParameterDict, ScriptDict),
+                rtol=rtol,
+                rtol_override=self.rel_tol,
+                atol=atol,
+                atol_override=self.precision,
+                equal_nan=equal_nan,
+                check_device=exact_device,
+                check_dtype=exact_dtype,
+                check_layout=exact_layout,
+                check_stride=exact_stride,
+                check_is_coalesced=exact_is_coalesced,
+                msg=msg,
+            )
 
     def assertNotEqual(self, x, y, msg: Optional[str] = None, *,                                       # type: ignore[override]
                        atol: Optional[float] = None, rtol: Optional[float] = None, **kwargs) -> None:

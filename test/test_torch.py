@@ -8368,4 +8368,59 @@ instantiate_device_type_tests(TestTorchDeviceType, globals())
 instantiate_device_type_tests(TestDevicePrecision, globals(), except_for='cpu')
 
 if __name__ == '__main__':
-    run_tests()
+    from name_resolver import resolve_func
+    from collections import defaultdict
+    from torch.utils._pytree import tree_map
+
+    def is_capsule(o):
+        t = type(o)
+        return t.__module__ == 'builtins' and t.__name__ == 'PyCapsule'
+
+    def strip_arg(a):
+        def strip(a):
+            if isinstance(a, torch.Tensor):
+                if not a.is_sparse:
+                    return (tuple(a.size()), tuple(a.stride()), a.dtype)
+                else:
+                    return "sparse"
+            elif isinstance(a, torch._UntypedStorage):
+                return "storage"
+            elif isinstance(a, np.ndarray):
+                return "ndarray"
+            elif isinstance(a, torch.Generator):
+                return "generator"
+            elif callable(a):
+                return "callable"
+            elif isinstance(a, torch.memory_format):
+                return repr(a)
+            elif isinstance(a, torch.storage._TypedStorage):
+                return "typed storage"
+            elif is_capsule(a):
+                return "capsule"
+            else:
+                return a
+        # work around https://github.com/pytorch/pytorch/issues/75218
+        if isinstance(a, tuple):
+            a = tuple(a)
+        return tree_map(strip, a)
+
+    class CoverageMode(torch.overrides.TorchFunctionMode):
+        def __init__(self):
+            self.file = open("test_torch_cov.pkl", 'wb')
+
+        def __torch_function__(self, func, types, args=(), kwargs=None):
+            kwargs = kwargs or {}
+
+            # These are SUPER popular, don't record
+            if func in [torch.Tensor.tolist, torch.Tensor.unbind, torch.Tensor.__repr__, torch.Tensor.__deepcopy__, torch.Tensor.to, torch.Tensor.add_, torch.Tensor.__getitem__, torch.Tensor.__setitem__, torch.Tensor.mul, torch.Tensor.dtype, torch.Tensor.numpy, torch.Tensor.cpu]:
+                return func(*args, **kwargs)
+
+            stripped_args = tuple(strip_arg(a) for a in args)
+            stripped_kwargs = tuple((k, strip_arg(v)) for k, v in kwargs.items())
+
+            r = func(*args, **kwargs)
+            pickle.dump((resolve_func(func), stripped_args, stripped_kwargs, strip_arg(r)), self.file)
+            return r
+
+    with torch.overrides.push_torch_function_mode(CoverageMode) as mode:
+        run_tests()
