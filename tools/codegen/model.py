@@ -132,7 +132,12 @@ class DispatchKey(Enum):
                 return v
         raise AssertionError(f'unknown dispatch key {value}')
 
-STRUCTURED_DISPATCH_KEYS = {DispatchKey.CUDA, DispatchKey.CPU}
+STRUCTURED_DISPATCH_KEYS = {
+    DispatchKey.CPU,
+    DispatchKey.CUDA,
+    DispatchKey.QuantizedCPU,
+    DispatchKey.QuantizedCUDA,
+}
 
 # Set of supported dispatch keys
 dispatch_keys = [
@@ -175,9 +180,14 @@ def is_cuda_dispatch_key(dk: DispatchKey) -> bool:
 def is_structured_dispatch_key(dk: DispatchKey) -> bool:
     return dk in STRUCTURED_DISPATCH_KEYS
 
+# TODO: setup ufuncs for quantization dispatch keys
+UFUNC_DISPATCH_KEYS = {
+    DispatchKey.CPU,
+    DispatchKey.CUDA,
+}
+
 def is_ufunc_dispatch_key(dk: DispatchKey) -> bool:
-    # For now, ufunc dispatch keys coincide with structured keys
-    return dk in STRUCTURED_DISPATCH_KEYS
+    return dk in UFUNC_DISPATCH_KEYS
 
 # This is oddly named ScalarType and not DType for symmetry with C++
 class ScalarType(Enum):
@@ -866,7 +876,7 @@ class BackendIndex:
         elif isinstance(g, NativeFunctionsGroup):
             f = self.primary(g)
         else:
-            assert_never(f)
+            assert_never(g)
         if f.func.name not in self.index:
             return None
         return self.index[f.func.name]

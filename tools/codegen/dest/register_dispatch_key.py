@@ -464,6 +464,7 @@ if (C10_UNLIKELY(current_device.has_value())) {
         if k is SchemaKind.functional:
             assert self.backend_index.dispatch_key in (
                 DispatchKey.Meta, DispatchKey.CPU, DispatchKey.CUDA,
+                DispatchKey.QuantizedCPU, DispatchKey.QuantizedCUDA,
                 DispatchKey.CompositeExplicitAutograd)
             return f"""{maybe_set_guard_line}
 outputs_[output_idx] = create_out(sizes, strides, options);"""

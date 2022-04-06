@@ -1161,8 +1161,6 @@
   variants: function, method
   cpp_no_default_args: ['min']
   structured_delegate: clamp.out
-  dispatch:
-    QuantizedCPU: clamp_quantized_cpu
 
 - func: clamp.Tensor(Tensor self, Tensor? min=None, Tensor? max=None) -> Tensor
   variants: function, method
@@ -1189,6 +1187,7 @@
   structured_inherits: TensorIteratorBase
   dispatch:
     CPU, CUDA: clamp_out
+    QuantizedCPU: clamp_quantized_cpu_out
 
 - func: clamp.Tensor_out(Tensor self, Tensor? min=None, Tensor? max=None, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -2923,8 +2922,6 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: max.dim_max
   variants: function, method
-  dispatch:
-    QuantizedCPU, QuantizedCUDA: qmax
 
 - func: max.dim_max(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) max, Tensor(b!) max_values) -> (Tensor(a!) values, Tensor(b!) indices)
   device_check: NoCheck   # TensorIterator
@@ -3000,8 +2997,6 @@
   structured_delegate: mean.out
   device_check: NoCheck   # TensorIterator
   variants: function, method
-  dispatch:
-    QuantizedCPU: mean_quantized_cpu
 
 - func: mean.out(Tensor self, int[1] dim, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -3070,8 +3065,6 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: min.dim_min
   variants: function, method
-  dispatch:
-    QuantizedCPU, QuantizedCUDA: qmin
 
 - func: min.dim_min(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) min, Tensor(b!) min_indices) -> (Tensor(a!) values, Tensor(b!) indices)
   device_check: NoCheck   # TensorIterator
@@ -3765,7 +3758,6 @@
   python_module: nn
   dispatch:
     MkldnnCPU: mkldnn_gelu
-    QuantizedCPU: gelu_quantized_cpu
 
 - func: gelu_backward.grad_input(Tensor grad_output, Tensor self, *, str approximate='none', Tensor(a!) grad_input) -> Tensor(a!)
   structured: True
@@ -3923,7 +3915,6 @@
   structured_delegate: sigmoid.out
   variants: function, method
   dispatch:
-    QuantizedCPU: sigmoid_quantized_cpu
     MkldnnCPU: mkldnn_sigmoid
 
 - func: sigmoid_(Tensor(a!) self) -> Tensor(a!)
@@ -4484,7 +4475,6 @@
   structured_delegate: tanh.out
   variants: function, method
   dispatch:
-    QuantizedCPU: tanh_quantized_cpu
     MkldnnCPU: mkldnn_tanh
     SparseCPU, SparseCUDA: tanh_sparse
     SparseCsrCPU, SparseCsrCUDA: tanh_sparse_csr
@@ -4520,8 +4510,6 @@
   device_check: NoCheck   # TensorIterator
   variants: function
   structured_delegate: threshold.out
-  dispatch:
-    QuantizedCPU: threshold_quantized_cpu
 
 - func: threshold_(Tensor(a!) self, Scalar threshold, Scalar value) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -6555,14 +6543,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: ne_Scalar_out
-    QuantizedCPU: ne_out_quantized_cpu
+    QuantizedCPU: ne_Scalar_out_quantized_cpu
 
 - func: ne.Scalar(Tensor self, Scalar other) -> Tensor
   structured_delegate: ne.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: ne_quantized_cpu
 
 - func: ne.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -6570,14 +6556,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: ne_Tensor_out
-    QuantizedCPU: ne_out_quantized_cpu
+    QuantizedCPU: ne_Tensor_out_quantized_cpu
 
 - func: ne.Tensor(Tensor self, Tensor other) -> Tensor
   structured_delegate: ne.Tensor_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: ne_quantized_cpu
 
 - func: ne_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   structured_delegate: ne.Scalar_out
@@ -6616,14 +6600,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: eq_Scalar_out
-    QuantizedCPU: eq_out_quantized_cpu
+    QuantizedCPU: eq_Scalar_out_quantized_cpu
 
 - func: eq.Scalar(Tensor self, Scalar other) -> Tensor
   structured_delegate: eq.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: eq_quantized_cpu
 
 - func: eq.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -6631,14 +6613,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: eq_Tensor_out
-    QuantizedCPU: eq_out_quantized_cpu
+    QuantizedCPU: eq_Tensor_out_quantized_cpu
 
 - func: eq.Tensor(Tensor self, Tensor other) -> Tensor
   structured_delegate: eq.Tensor_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: eq_quantized_cpu
 
 - func: ge.Scalar_out(Tensor self, Scalar other, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -6646,14 +6626,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: ge_Scalar_out
-    QuantizedCPU: ge_out_quantized_cpu
+    QuantizedCPU: ge_Scalar_out_quantized_cpu
 
 - func: ge.Scalar(Tensor self, Scalar other) -> Tensor
   structured_delegate: ge.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: ge_quantized_cpu
 
 - func: ge.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -6661,14 +6639,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: ge_Tensor_out
-    QuantizedCPU: ge_out_quantized_cpu
+    QuantizedCPU: ge_Tensor_out_quantized_cpu
 
 - func: ge.Tensor(Tensor self, Tensor other) -> Tensor
   structured_delegate: ge.Tensor_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: ge_quantized_cpu
 
 - func: ge_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   structured_delegate: ge.Scalar_out
@@ -6707,14 +6683,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: le_Scalar_out
-    QuantizedCPU: le_out_quantized_cpu
+    QuantizedCPU: le_Scalar_out_quantized_cpu
 
 - func: le.Scalar(Tensor self, Scalar other) -> Tensor
   structured_delegate: le.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: le_quantized_cpu
 
 - func: le.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -6722,14 +6696,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: le_Tensor_out
-    QuantizedCPU: le_out_quantized_cpu
+    QuantizedCPU: le_Tensor_out_quantized_cpu
 
 - func: le.Tensor(Tensor self, Tensor other) -> Tensor
   structured_delegate: le.Tensor_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: le_quantized_cpu
 
 - func: le_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   structured_delegate: le.Scalar_out
@@ -6768,14 +6740,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: gt_Scalar_out
-    QuantizedCPU: gt_out_quantized_cpu
+    QuantizedCPU: gt_Scalar_out_quantized_cpu
 
 - func: gt.Scalar(Tensor self, Scalar other) -> Tensor
   structured_delegate: gt.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: gt_quantized_cpu
 
 - func: gt.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -6783,14 +6753,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: gt_Tensor_out
-    QuantizedCPU: gt_out_quantized_cpu
+    QuantizedCPU: gt_Tensor_out_quantized_cpu
 
 - func: gt.Tensor(Tensor self, Tensor other) -> Tensor
   structured_delegate: gt.Tensor_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: gt_quantized_cpu
 
 - func: gt_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   structured_delegate: gt.Scalar_out
@@ -6829,14 +6797,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: lt_Scalar_out
-    QuantizedCPU: lt_out_quantized_cpu
+    QuantizedCPU: lt_Scalar_out_quantized_cpu
 
 - func: lt.Scalar(Tensor self, Scalar other) -> Tensor
   structured_delegate: lt.Scalar_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: lt_quantized_cpu
 
 - func: lt.Tensor_out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
@@ -6844,14 +6810,12 @@
   device_check: NoCheck   # TensorIterator
   dispatch:
     CPU, CUDA: lt_Tensor_out
-    QuantizedCPU: lt_out_quantized_cpu
+    QuantizedCPU: lt_Tensor_out_quantized_cpu
 
 - func: lt.Tensor(Tensor self, Tensor other) -> Tensor
   structured_delegate: lt.Tensor_out
   device_check: NoCheck   # TensorIterator
   variants: method, function
-  dispatch:
-    QuantizedCPU: lt_quantized_cpu
 
 - func: lt_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   structured_delegate: lt.Scalar_out
@@ -7735,8 +7699,6 @@
 - func: topk(Tensor self, int k, int dim=-1, bool largest=True, bool sorted=True) -> (Tensor values, Tensor indices)
   variants: method, function
   structured_delegate: topk.values
-  dispatch:
-    QuantizedCPU: topk_quantized_cpu
 
 - func: all(Tensor self) -> Tensor
   device_check: NoCheck   # TensorIterator
@@ -8931,8 +8893,6 @@
   structured_delegate: hardsigmoid.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
-  dispatch:
-    QuantizedCPU: hardsigmoid_quantized_cpu
 
 - func: hardsigmoid_(Tensor(a!) self) -> Tensor(a!)
   structured_delegate: hardsigmoid.out
@@ -9017,8 +8977,6 @@
   structured_delegate: leaky_relu.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
-  dispatch:
-    QuantizedCPU: leaky_relu_quantized_cpu
 
 - func: leaky_relu_backward.grad_input(Tensor grad_output, Tensor self, Scalar negative_slope, bool self_is_result, *, Tensor(a!) grad_input) -> Tensor(a!)
   structured: True
@@ -9035,8 +8993,6 @@
   structured_delegate: leaky_relu.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
-  dispatch:
-    QuantizedCPU: leaky_relu_quantized_cpu_
 
 - func: log_sigmoid.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -9266,7 +9222,6 @@
   structured_delegate: avg_pool2d.out
   dispatch:
     MkldnnCPU: mkldnn_avg_pool2d
-    QuantizedCPU: avg_pool2d_quantized_cpu
 
 - func: avg_pool2d_backward.grad_input(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, bool ceil_mode, bool count_include_pad, int? divisor_override, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
@@ -9295,7 +9250,6 @@
   structured_delegate: avg_pool3d.out
   dispatch:
     MkldnnCPU: mkldnn_avg_pool3d
-    QuantizedCPU: avg_pool3d_quantized_cpu
 
 - func: avg_pool3d_backward.grad_input(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] stride, int[3] padding, bool ceil_mode, bool count_include_pad, int? divisor_override, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
@@ -9472,8 +9426,6 @@
 - func: reflection_pad1d(Tensor self, int[2] padding) -> Tensor
   python_module: nn
   structured_delegate: reflection_pad1d.out
-  dispatch:
-    QuantizedCPU: reflection_pad1d_quantized_cpu
 
 - func: reflection_pad1d_backward.grad_input(Tensor grad_output, Tensor self, int[2] padding, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
@@ -9769,8 +9721,6 @@
 - func: upsample_bilinear2d(Tensor self, int[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: upsample_bilinear2d.out
-  dispatch:
-    QuantizedCPU: upsample_bilinear2d_quantized_cpu
 
 - func: upsample_bilinear2d_backward.grad_input(Tensor grad_output, int[2] output_size, int[4] input_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
@@ -9932,14 +9882,10 @@
 - func: upsample_nearest2d(Tensor self, int[2] output_size, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: upsample_nearest2d.out
-  dispatch:
-    QuantizedCPU: upsample_nearest2d_quantized_cpu
 
 - func: _upsample_nearest_exact2d(Tensor self, int[2] output_size, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: _upsample_nearest_exact2d.out
-  dispatch:
-    QuantizedCPU: _upsample_nearest_exact2d_quantized_cpu
 
 - func: upsample_nearest2d_backward.grad_input(Tensor grad_output, int[2] output_size, int[4] input_size, float? scales_h=None, float? scales_w=None, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
@@ -9980,14 +9926,10 @@
 - func: upsample_nearest3d(Tensor self, int[3] output_size, float? scales_d=None, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: upsample_nearest3d.out
-  dispatch:
-    QuantizedCPU: upsample_nearest3d_quantized_cpu
 
 - func: _upsample_nearest_exact3d(Tensor self, int[3] output_size, float? scales_d=None, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: _upsample_nearest_exact3d.out
-  dispatch:
-    QuantizedCPU: _upsample_nearest_exact3d_quantized_cpu
 
 - func: upsample_nearest3d_backward.grad_input(Tensor grad_output, int[3] output_size, int[5] input_size, float? scales_d=None, float? scales_h=None, float? scales_w=None, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn

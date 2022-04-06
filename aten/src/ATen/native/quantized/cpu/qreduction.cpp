@@ -4,12 +4,12 @@
 #include <ATen/native/quantized/cpu/init_qnnpack.h>
 #include <ATen/native/quantized/cpu/qnnpack_utils.h>
 #include <caffe2/utils/threadpool/pthreadpool-cpp.h>
+#include <ATen/quantized/Quantizer.h>
 
 namespace at {
 namespace native {
 #ifdef USE_PYTORCH_QNNPACK
-Tensor qnnpack_mean(const Tensor& input, IntArrayRef dim, bool keepdim) {
-  Tensor output;
+Tensor qnnpack_mean(const Tensor& input, IntArrayRef dim, bool keepdim, const Tensor& output) {
   TORCH_CHECK(
       input.ndimension() == 4,
       "qnnpack_global_average_pool: Expected input to be 4-dimensional: got ",
@@ -32,13 +32,6 @@ Tensor qnnpack_mean(const Tensor& input, IntArrayRef dim, bool keepdim) {
   const auto scale = input_contig.q_scale();
   const auto zero_point = input_contig.q_zero_point();
   const auto outC = inC;
-
-  output = at::_empty_affine_quantized(
-      keepdim ? IntArrayRef{batch_size, outC, 1, 1}
-              : IntArrayRef{batch_size, outC},
-      at::device(kCPU).dtype(kQUInt8),
-      scale,
-      zero_point);
 
   pytorch_qnnp_operator_t qnnpack_operator{nullptr};
   const pytorch_qnnp_status createStatus =
@@ -80,59 +73,35 @@ Tensor qnnpack_mean(const Tensor& input, IntArrayRef dim, bool keepdim) {
   return output;
 }
 #endif
-Tensor& mean_out_quantized_cpu(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool keepdim,
-    c10::optional<ScalarType> opt_dtype,
-    Tensor& result) {
+
+TORCH_IMPL_FUNC(mean_out_quantized_cpu)
+(const Tensor& self,
+ IntArrayRef dim,
+ bool keepdim,
+ c10::optional<ScalarType> opt_dtype,
+ const Tensor& result) {
+  TORCH_CHECK(self.qscheme() == kPerTensorAffine);
+  set_quantizer_(result, self.quantizer());
+  // Will be less necessary once we have https://github.com/pytorch/pytorch/issues/69813
+  TORCH_INTERNAL_ASSERT(result.is_contiguous());
 #ifdef USE_PYTORCH_QNNPACK
   if (at::globalContext().qEngine() == at::QEngine::QNNPACK &&
       self.scalar_type() == kQUInt8 &&
       // QNNPACK currently is only supported for NCHW + dim=(2, 3)
       // Remove these checks after generic version is implemented.
       self.ndimension() == 4 && dim.size() == 2 && dim[0] == 2 && dim[1] == 3) {
-    result = qnnpack_mean(self, dim, keepdim);
-    return result;
+    qnnpack_mean(self, dim, keepdim, result);
   }
 #endif
   auto self_dequantized = self.dequantize();
   auto result_dequantized = at::mean(self_dequantized, dim, keepdim, opt_dtype);
-  result = at::quantize_per_tensor(
+  // TODO: avoid copy by adding an out variant to quantize_per_tensor
+  auto tmp_result = at::quantize_per_tensor(
       result_dequantized,
       self.q_scale(),
       self.q_zero_point(),
       opt_dtype.value_or(self.scalar_type()));
-  return result;
-}
-
-Tensor mean_quantized_cpu(
-    const Tensor& self,
-    IntArrayRef dim,
-    bool keepdim,
-    optional<ScalarType> dtype) {
-  Tensor result;
-  mean_out_quantized_cpu(self, dim, keepdim, dtype, result);
-  return result;
-}
-
-Tensor mean_quantized_cpu(
-    const Tensor& self,
-    DimnameList dim,
-    bool keepdim,
-    optional<ScalarType> dtype) {
-  return mean_quantized_cpu(
-      self, dimnames_to_positions(self, dim), keepdim, dtype);
-}
-
-Tensor& mean_out_quantized_cpu(
-    Tensor& result,
-    const Tensor& self,
-    DimnameList dim,
-    bool keepdim,
-    c10::optional<ScalarType> opt_dtype) {
-  return mean_out_quantized_cpu(
-      self, dimnames_to_positions(self, dim), keepdim, opt_dtype, result);
+  result.copy_(tmp_result);
 }
 
 } // namespace native
