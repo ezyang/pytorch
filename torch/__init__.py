@@ -47,7 +47,7 @@ __all__ = [
     'are_deterministic_algorithms_enabled',
     'is_deterministic_algorithms_warn_only_enabled',
     'set_deterministic_debug_mode', 'get_deterministic_debug_mode',
-    'set_warn_always', 'is_warn_always_enabled',
+    'set_warn_always', 'is_warn_always_enabled'
 ]
 
 ################################################################################
@@ -900,3 +900,4 @@ def _register_device_module(device_type, module):
 
 # expose return_types
 from . import return_types
+from . import library

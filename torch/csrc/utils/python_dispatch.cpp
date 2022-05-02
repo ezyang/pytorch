@@ -5,6 +5,10 @@
 #include <ATen/ATen.h>
 #include <ATen/core/dispatch/Dispatcher.h>
 
+#include <c10/core/SafePyObject.h>
+#include <torch/csrc/jit/python/pybind_utils.h>
+#include <torch/csrc/autograd/python_variable.h>
+
 #include <pybind11/operators.h>
 #include <pybind11/stl.h>
 
@@ -49,6 +53,20 @@ inline torch::CppFunction dispatch_str(const char* key, Func&& raw_f) {
     return f;
   }
 }
+
+class PythonKernelHolder : public c10::OperatorKernel {
+  SafePyObject func_;
+public:
+  PythonKernelHolder(py::object func) : func_(func.release().ptr(), getPyInterpreter()) {}
+
+  void operator()(const c10::OperatorHandle& op, c10::DispatchKeySet keyset, torch::jit::Stack* stack) {
+    auto arguments = torch::jit::pop(*stack, op.schema().arguments().size());
+    auto args_kwargs = get_args_kwargs(op, arguments);
+    py::gil_scoped_acquire g;
+    auto obj = py::reinterpret_steal<py::object>(PyObject_Call(func_.ptr(getPyInterpreter()), args_kwargs.first.ptr(), args_kwargs.second.ptr()));
+    push_out_to_stack(op, stack, py::reinterpret_steal<py::object>(obj), "PythonKernelHolder");
+  }
+};
 
 void initDispatchBindings(PyObject* module) {
   auto m = py::handle(module).cast<py::module>();
@@ -122,6 +140,14 @@ void initDispatchBindings(PyObject* module) {
       );
       return self;
     }, "", py::arg("name"), py::arg("dispatch") = "", py::arg("debug") = "")
+    .def("impl", [](py::object self, const char* name, const char* dispatch, py::object func) {
+      HANDLE_TH_ERRORS
+      self.cast<torch::Library&>().impl(
+        name,
+        dispatch_str(dispatch, CppFunction::makeFromBoxedFunctor(std::make_unique<PythonKernelHolder>(std::move(func))))
+      );
+      END_HANDLE_TH_ERRORS_PYBIND
+    }, "", py::arg("name"), py::arg("dispatch"), py::arg("func"))
     .def("fallback_fallthrough", [](py::object self, const char* dispatch) {
       self.cast<torch::Library&>().fallback(
         dispatch_str(dispatch, CppFunction::makeFallthrough())
@@ -130,13 +156,15 @@ void initDispatchBindings(PyObject* module) {
     }, "", py::arg("dispatch") = "")
   ;
 
-  m.def("_dispatch_library", [](const char* kind, std::string name, const char* dispatch) {
+  m.def("_dispatch_library", [](const char* kind, std::string name, const char* dispatch, const char* file_and_line) {
+    HANDLE_TH_ERRORS
     return std::make_unique<torch::Library>(
       parseKind(kind),
       std::move(name),
       std::string(dispatch) == "" ? c10::nullopt : c10::make_optional(c10::parseDispatchKey(dispatch)),
-      "/dev/null",
+      file_and_line,
       0);
+    END_HANDLE_TH_ERRORS_PYBIND
   });
 
   m.def("_dispatch_dump", [](const char* name) -> std::string {
