@@ -82,6 +82,35 @@ class TestPythonRegistration(TestCase):
         # self.assertTrue(not torch.neg(x).is_neg())
         # self.assertTrue(torch.mul(x, y)._is_zerotensor())
 
+    def test_create_new_library(self) -> None:
+        my_lib1 = torch.create_library("foo")
+
+        # Example 1
+        def my_sum(*args, **kwargs):
+            return args[0]
+
+        my_lib1.define("sum(Tensor self) -> Tensor")
+        my_lib1.impl("sum", "CPU", my_sum)
+
+        x = torch.tensor([1, 2])
+        self.assertEqual(torch.ops.foo.sum(x), x)
+
+        my_lib2 = torch.extend_library("foo")
+
+        # Example 1
+        def my_sum_zt(*args, **kwargs):
+            if args[0]._is_zerotensor():
+                return torch._efficientzerotensor(args[0].shape)
+            else:
+                return args[0]
+
+        torch.ops.foo.sum.default.impl(my_lib2, "ZeroTensor", my_sum_zt)
+        y = torch._efficientzerotensor(3)
+        self.assertTrue(torch.ops.foo.sum(y)._is_zerotensor())
+
+        my_lib1.remove()
+        my_lib2.remove()
+
 class TestPythonDispatch(TestCase):
     def test_basic(self) -> None:
         with capture_logs() as logs:
