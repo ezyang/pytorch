@@ -734,7 +734,7 @@ static PyObject* THPVariable_make_wrapper_subclass(
     TensorImpl* tensor_impl = tensor.unsafeGetTensorImpl();
 
     // TODO: this should probably be sym_sizes, sym_strides AND offset
-    tensor_impl->set_sym_sizes_and_strides(sym_sizes, sym_strides);
+    tensor_impl->set_sym_sizes_and_strides(asSymIntArrayRef(sym_sizes), asSymIntArrayRef(sym_strides));
 
     // TODO: this may need to be symbolic as well
     auto storage_offset = r.toInt64Optional(3);

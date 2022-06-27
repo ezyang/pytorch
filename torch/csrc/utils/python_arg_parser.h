@@ -186,6 +186,16 @@ struct PYBIND11_EXPORT FunctionSignature {
   bool disable_torch_function;
 };
 
+using MaybeSymIntList = c10::variant<std::vector<int64_t>, std::vector<c10::SymInt>>;
+
+c10::SymIntArrayRef asSymIntArrayRef(const MaybeSymIntList& s) {
+  if (s.index() == 0) {
+    return c10::SymIntArrayRef::fromIntArrayRef(c10::get<0>(s));
+  } else {
+    return c10::get<1>(s);
+  }
+}
+
 struct PythonArgs {
   PythonArgs(
       bool traceable,
@@ -213,7 +223,7 @@ struct PythonArgs {
   template <int N>
   inline std::array<at::Tensor, N> tensorlist_n(int i);
   inline std::vector<int64_t> intlist(int i);
-  inline std::vector<c10::SymInt> symintlist(int i);
+  inline MaybeSymIntList symintlist(int i);
   inline c10::OptionalArray<int64_t> intlistOptional(int i);
   inline std::vector<int64_t> intlistWithDefault(
       int i,
@@ -491,17 +501,16 @@ inline PyObject* toPyObject(c10::SymInt symint) {
   }
 }
 
-inline std::vector<c10::SymInt> PythonArgs::symintlist(int i) {
+// Returns a std::vector<int64_t> if all the sizes are non symbolic
+inline MaybeSymIntList PythonArgs::symintlist(int i) {
   if (!args[i]) {
-    return c10::fmap(signature.params[i].default_intlist, [](int64_t di) {
-      return c10::SymInt(di);
-    });
+    return signature.params[i].default_intlist;
   }
 
   const auto size1 = signature.params[i].size;
   if (size1 > 0 && THPUtils_checkLong(args[i])) {
-    return std::vector<c10::SymInt>(
-        size1, c10::SymInt(THPUtils_unpackIndex(args[i])));
+    return std::vector<int64_t>(
+        size1, THPUtils_unpackIndex(args[i]));
   }
 
   if (size1 > 0 && torch::is_symint_node(py::handle(args[i]))) {
@@ -515,6 +524,9 @@ inline std::vector<c10::SymInt> PythonArgs::symintlist(int i) {
   const auto size2 = tuple ? PyTuple_GET_SIZE(arg) : PyList_GET_SIZE(arg);
   std::vector<c10::SymInt> res;
   res.reserve(size2);
+  std::vector<int64_t> res_int;
+  res_int.reserve(size2);
+  bool has_sym = false;
   for (const auto idx : c10::irange(size2)) {
     PyObject* obj =
         tuple ? PyTuple_GET_ITEM(arg, idx) : PyList_GET_ITEM(arg, idx);
@@ -522,6 +534,7 @@ inline std::vector<c10::SymInt> PythonArgs::symintlist(int i) {
       if (is_symint_node(py::handle(obj))) {
         res.push_back(
             py::handle(obj).cast<c10::SymbolicIntNode*>()->toSymInt());
+        has_sym = true;
       } else {
         // Elements of torch.Size are tensors during tracing, and we need to
         // record extra information before they are turned into an IntArrayRef
@@ -530,9 +543,11 @@ inline std::vector<c10::SymInt> PythonArgs::symintlist(int i) {
           jit::tracer::ArgumentStash::stashIntArrayRefElem(
               signature.params[i].name, size2, idx, var);
           res.push_back(var.item<int64_t>());
+          res_int.push_back(var.item<int64_t>());
           continue;
         }
         res.push_back(c10::SymInt(THPUtils_unpackIndex(obj)));
+        res_int.push_back(THPUtils_unpackIndex(obj));
       }
     } catch (const std::exception& e) {
       auto te = TypeError(
@@ -545,7 +560,11 @@ inline std::vector<c10::SymInt> PythonArgs::symintlist(int i) {
     }
   }
 
-  return res;
+  if (has_sym) {
+    return res;
+  } else {
+    return res_int;
+  }
 }
 
 inline std::vector<int64_t> PythonArgs::intlistWithDefault(
