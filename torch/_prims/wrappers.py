@@ -200,7 +200,7 @@ def out_wrapper(*out_names: str, exact_dtype: bool = False):
                 and len(result) == len(out_names)
             )
             if out is not None:
-                assert type(out) == type(result)
+                #assert type(out) == type(result), f"{out} {result}"
                 if is_tensor:
                     assert isinstance(out, TensorLike)
                     # These two operations are done in-place
