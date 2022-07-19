@@ -89,7 +89,7 @@ _SKIP_PYTHON_BINDINGS = [
     ".*_jvp",
     "_unsafe_view",
     "tensor",
-    "_?sparse_(coo|compressed|csr|csc|bsr|bsc)_tensor.*",
+    "sparse_(coo|compressed|csr|csc|bsr|bsc)_tensor.*",
     "_arange.*",
     "_range.*",
     "linspace.*",

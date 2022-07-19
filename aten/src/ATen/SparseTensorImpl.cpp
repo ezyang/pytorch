@@ -6,6 +6,7 @@
 namespace at {
 
 namespace {
+  // TODO: can just read out MetaBit, no need to implement this here
   DeviceType sparseTensorSetToDeviceType(DispatchKeySet key_set) {
     if (key_set.has(DispatchKey::SparseCPU)) {
       return kCPU;
@@ -13,6 +14,8 @@ namespace {
       return kXPU;
     } else if (key_set.has(DispatchKey::SparseCUDA)) {
       return kCUDA;
+    } else if (key_set.has(DispatchKey::SparseMeta)) {
+      return kMeta;
     } else {
       AT_ERROR("Cannot construct SparseTensor with non-sparse tensor type ID ", key_set);
     }

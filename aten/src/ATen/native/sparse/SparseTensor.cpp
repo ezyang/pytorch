@@ -130,13 +130,17 @@ SparseTensor new_sparse(
     c10::optional<Layout> layout,
     c10::optional<Device> device,
     c10::optional<bool> pin_memory) {
-  AT_ASSERT(layout.has_value() && *layout == kSparse);
+  AT_ASSERT(!layout.has_value() || *layout == kSparse);
   DispatchKey dispatch_key;
+  // TODO: factor this somewhere else
   if (device_or_default(device).is_cuda()) {
     dispatch_key = DispatchKey::SparseCUDA;
   } else if (device_or_default(device).is_xpu()) {
     dispatch_key = DispatchKey::SparseXPU;
+  } else if (device_or_default(device).is_meta()) {
+    dispatch_key = DispatchKey::SparseMeta;
   } else {
+    TORCH_INTERNAL_ASSERT(device_or_default(device).is_cpu());
     dispatch_key = DispatchKey::SparseCPU;
   }
   return detail::make_tensor<SparseTensorImpl>(

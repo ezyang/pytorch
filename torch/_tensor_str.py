@@ -303,11 +303,11 @@ def get_summarized_data(self):
     else:
         return torch.stack([get_summarized_data(x) for x in self])
 
-def _str_intern(inp, *, tensor_contents=None):
+def _str_intern(inp, *, tensor_contents=None, force_plain=False):
     is_plain_tensor = type(inp) is torch.Tensor or type(inp) is torch.nn.Parameter
     if inp.is_nested:
         prefix = "nested_tensor("
-    elif is_plain_tensor:
+    elif is_plain_tensor or force_plain:
         prefix = 'tensor('
     else:
         prefix = f"{type(inp).__name__}("
@@ -345,7 +345,9 @@ def _str_intern(inp, *, tensor_contents=None):
     has_default_dtype = self.dtype in (torch.get_default_dtype(), _default_complex_dtype, torch.int64, torch.bool)
     if self.is_sparse:
         suffixes.append('size=' + str(tuple(self.shape)))
-        suffixes.append('nnz=' + str(self._nnz()))
+        from torch._subclasses.fake_tensor import FakeTensor
+        if not self.is_meta and not isinstance(self, FakeTensor):
+            suffixes.append('nnz=' + str(self._nnz()))
         if not has_default_dtype:
             suffixes.append('dtype=' + str(self.dtype))
         if not custom_contents_provided:
@@ -479,6 +481,6 @@ def _str_intern(inp, *, tensor_contents=None):
 
     return string_repr
 
-def _str(self, *, tensor_contents=None):
+def _str(self, *, tensor_contents=None, force_plain=False):
     with torch.no_grad():
-        return _str_intern(self, tensor_contents=tensor_contents)
+        return _str_intern(self, tensor_contents=tensor_contents, force_plain=force_plain)

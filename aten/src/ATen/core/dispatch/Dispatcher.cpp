@@ -366,4 +366,10 @@ void Dispatcher::runRecordFunction(at::RecordFunction& guard, at::RecordFunction
   guard.before(schema_ref, sequenceNumberForRunningRecordFunction(dispatchKey));
 }
 
+void debug_observe(const OperatorHandle& op, Stack* stack) {
+  auto extractor = DispatchKeyExtractor::make(op.schema());
+  extractor.setOperatorHasFallthroughForKey(DispatchKey::BackendSelect, true);
+  auto ks = extractor.getDispatchKeySetBoxed(stack);
+}
+
 }

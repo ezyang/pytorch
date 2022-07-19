@@ -68,6 +68,9 @@ _like_tensor_constructors = (
     aten.new_ones.default,
 )
 
+_sparse_tensor_constructors = (
+    aten._sparse_coo_tensor_with_dims_and_tensors.default,
+)
 
 @functools.lru_cache(None)
 def _is_tensor_constructor(func: OpOverload):
@@ -125,13 +128,6 @@ class FakeTensorConverter(object):
         if maybe_memo is not None:
             return maybe_memo
         existing_device = t.device
-        # not yet supported in metatensors
-        if t.is_complex():
-            raise UnsupportedFakeTensorException("complex nyi in meta tensors")
-        if t.is_sparse:
-            raise UnsupportedFakeTensorException("sparse nyi in meta tensors")
-        if t.is_quantized:
-            raise UnsupportedFakeTensorException("quantized nyi in meta tensors")
         with no_dispatch():
             out = FakeTensor(fake_mode, self.meta_converter(t), existing_device)
         if type(t) is torch.nn.Parameter:
@@ -170,7 +166,11 @@ def register_op_impl(run_impl_check: Union[Callable[[OpOverload], bool], OpOverl
 
     return impl_decorator
 
-@register_op_impl(lambda func: (_is_tensor_constructor(func) or func in _like_tensor_constructors))
+@register_op_impl(lambda func: (
+    _is_tensor_constructor(func)
+    or func in _like_tensor_constructors
+    or func in _sparse_tensor_constructors
+))
 def contructors(fake_mode, func, *args, **kwargs):
     assert func not in _non_kwarg_device_constructors
     _, new_kwargs = normalize_function(
@@ -303,7 +303,9 @@ class FakeTensor(torch.Tensor):
 
     # TODO: resolve error in default __repr__
     def __repr__(self):
-        return f"FakeTensor({self.fake_device}, {self.size()}, {self.dtype})"
+        with in_kernel_invocation_manager(self.fake_mode):
+            self_repr = super().__repr__(force_plain=True)
+        return f"FakeTensor({self.fake_mode}, {self_repr}, {self.fake_device})"
 
     def new(self, *args, **kwargs):
         # torch.Tensor.new does not go through the normal dispatcher pattern
@@ -436,6 +438,7 @@ class FakeTensorMode(TorchDispatchMode):
 
     def __torch_dispatch__(self, func, types, args=(), kwargs=None):
         kwargs = kwargs if kwargs else {}
+        print(func)
 
         if func == torch.ops.prim.device.default:
             assert len(args) == 1 and isinstance(args[0], FakeTensor)
@@ -520,7 +523,13 @@ class FakeTensorMode(TorchDispatchMode):
 
             with in_kernel_invocation_manager(self):
                 try:
-                    r = func(*args, **kwargs)
+                    try:
+                        r = func(*args, **kwargs)
+                    except RuntimeError:
+                        print(args)
+                        print(kwargs)
+                        print(torch._C._dispatch_key_set(args[0]))
+                        raise
                 except NotImplementedError as not_implemented_error:
                     if not self.allow_fallback_kernels:
                         raise not_implemented_error
@@ -561,14 +570,15 @@ def run_fallback_kernel(func, args, kwargs, orig_not_implemented_exception):
         for e in tree_flatten((args, kwargs))[0]:
             if isinstance(e, torch.Tensor):
                 tensor_impls.add(e)
-                storages.add(e.storage()._cdata)
+                if not e.is_sparse:
+                    storages.add(e.storage()._cdata)
 
         # TODO: also check metadata change on inputs
         # proper aliasing/metadata relationship between outputs and inputs will
         # not be set up, bc of conversion to cpu, error on reused impls
         for e in tree_flatten(r)[0]:
             if e in tensor_impls or (
-                isinstance(e, torch.Tensor) and e.storage()._cdata in storages
+                isinstance(e, torch.Tensor) and not e.is_sparse and e.storage()._cdata in storages
             ):
                 raise orig_not_implemented_exception
 

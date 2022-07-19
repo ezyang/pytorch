@@ -180,14 +180,18 @@ enum class DispatchKey : uint16_t {
   // based on the layout of the tensor.  Note that the sparse backends
   // are one case where ordering matters: sparse multi-dispatches with
   // the corresponding dense tensors, and must be handled before them.
+  // TODO: make this a functionality key
   MkldnnCPU, // registered at build/aten/src/ATen/RegisterMkldnnCPU.cpp
+  MkldnnMeta,
   // NB: not to be confused with MKLDNN, which is Caffe2 only
 
   // See [Note: Per-Backend Functionality Dispatch Keys]
   Sparse,
 
+  // TODO: make this a functionality key
   SparseCsrCPU,
   SparseCsrCUDA,
+  SparseCsrMeta,
 
   // Note [Non-Customizable Backend Keys]
   // Every key above here is considered a "non-customizable backend".
@@ -201,7 +205,7 @@ enum class DispatchKey : uint16_t {
   // For all intents and purposes from the perspective of DispatchKeySet,
   // "non-customizable backend" keys are treated the same way
   // as other functionality keys
-  EndOfNonCustomizableBackends = SparseCsrCUDA,
+  EndOfNonCustomizableBackends = SparseCsrMeta,
 
   NestedTensor,
 
@@ -432,7 +436,7 @@ enum class DispatchKey : uint16_t {
   _QuantizedHPU,
   _QuantizedVE,
   _QuantizedLazy,
-  _QuantizedMeta,
+  QuantizedMeta,
   _QuantizedPrivateUse1,
   _QuantizedPrivateUse2,
   _QuantizedPrivateUse3,
@@ -455,7 +459,7 @@ enum class DispatchKey : uint16_t {
   _SparseHPU,
   SparseVE, // For out of tree & closed source integration of SX-Aurora / NEC
   _SparseLazy,
-  _SparseMeta,
+  SparseMeta,
   _SparsePrivateUse1,
   _SparsePrivateUse2,
   _SparsePrivateUse3,
@@ -480,7 +484,7 @@ enum class DispatchKey : uint16_t {
   _NestedTensorHPU,
   _NestedTensorVE,
   _NestedTensorLazy,
-  _NestedTensorMeta,
+  NestedTensorMeta,
   _NestedTensorPrivateUse1,
   _NestedTensorPrivateUse2,
   _NestedTensorPrivateUse3,

@@ -66,9 +66,11 @@ class DispatchKey(Enum):
     Quantized = auto()
     CustomRNGKeyId = auto()
     MkldnnCPU = auto()
+    MkldnnMeta = auto()
     Sparse = auto()
     SparseCsrCPU = auto()
     SparseCsrCUDA = auto()
+    SparseCsrMeta = auto()
 
     ZeroTensor = auto()
     Meta = auto()
@@ -99,18 +101,22 @@ class DispatchKey(Enum):
 
     QuantizedCPU = auto()
     QuantizedCUDA = auto()
+    QuantizedMeta = auto()
     QuantizedXPU = auto()
 
     SparseCPU = auto()
     SparseCUDA = auto()
+    SparseMeta = auto()
     SparseHIP = auto()
     SparseXPU = auto()
 
     NestedTensorCPU = auto()
     NestedTensorCUDA = auto()
+    NestedTensorMeta = auto()
 
     AutogradCPU = auto()
     AutogradCUDA = auto()
+    AutogradMeta = auto()
     AutogradXLA = auto()
     AutogradLazy = auto()
     AutogradIPU = auto()
@@ -169,6 +175,11 @@ dispatch_keys = [
     # Meta is a magic key: it is automatically generated for structured
     # kernels
     DispatchKey.Meta,
+    DispatchKey.SparseMeta,
+    DispatchKey.SparseCsrMeta,
+    DispatchKey.MkldnnMeta,
+    DispatchKey.QuantizedMeta,
+    DispatchKey.NestedTensorMeta,
     DispatchKey.ZeroTensor,
 ]
 

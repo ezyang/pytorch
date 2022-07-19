@@ -336,12 +336,12 @@ class Tensor(torch._C._TensorBase):
         # See Note [Don't serialize hooks]
         self.requires_grad, _, self._backward_hooks = state
 
-    def __repr__(self, *, tensor_contents=None):
+    def __repr__(self, *, tensor_contents=None, force_plain=False):
         if has_torch_function_unary(self):
             return handle_torch_function(Tensor.__repr__, (self,), self,
-                                         tensor_contents=tensor_contents)
+                                         tensor_contents=tensor_contents, force_plain=force_plain)
         # All strings are unicode in Python 3.
-        return torch._tensor_str._str(self, tensor_contents=tensor_contents)
+        return torch._tensor_str._str(self, tensor_contents=tensor_contents, force_plain=force_plain)
 
     def backward(self, gradient=None, retain_graph=None, create_graph=False, inputs=None):
         r"""Computes the gradient of current tensor w.r.t. graph leaves.

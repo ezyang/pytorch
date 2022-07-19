@@ -86,14 +86,20 @@ const char* toString(DispatchKey t) {
 
     case DispatchKey::MkldnnCPU:
       return "MkldnnCPU";
+    case DispatchKey::MkldnnMeta:
+      return "MkldnnMeta";
     case DispatchKey::SparseCPU:
       return "SparseCPU";
     case DispatchKey::SparseCUDA:
       return "SparseCUDA";
+    case DispatchKey::SparseMeta:
+      return "SparseMeta";
     case DispatchKey::SparseCsrCPU:
       return "SparseCsrCPU";
     case DispatchKey::SparseCsrCUDA:
       return "SparseCsrCUDA";
+    case DispatchKey::SparseCsrMeta:
+      return "SparseCsrMeta";
     case DispatchKey::SparseHIP:
       return "SparseHIP";
     case DispatchKey::SparseVE:
@@ -107,6 +113,8 @@ const char* toString(DispatchKey t) {
       return "NestedTensorCPU";
     case DispatchKey::NestedTensorCUDA:
       return "NestedTensorCUDA";
+    case DispatchKey::NestedTensorMeta:
+      return "NestedTensorMeta";
 
     case DispatchKey::Python:
       return "Python";

@@ -2540,7 +2540,7 @@ def main() -> None:
         DispatchKey.CUDA,
         DispatchKey.CompositeImplicitAutograd,
         DispatchKey.CompositeExplicitAutograd,
-        DispatchKey.CompositeExplicitAutogradNonFunctional,
+        #DispatchKey.CompositeExplicitAutogradNonFunctional,
         DispatchKey.Meta,
     }
     if options.mps:

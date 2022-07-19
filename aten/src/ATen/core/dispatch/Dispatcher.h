@@ -576,8 +576,11 @@ inline Return Dispatcher::redispatch(const TypedOperatorHandle<Return (Args...)>
   return kernel.template call<Return, Args...>(op, currentDispatchKeySet, std::forward<Args>(args)...);
 }
 
+TORCH_API void debug_observe(const OperatorHandle& op, Stack*);
+
 inline void Dispatcher::callBoxed(const OperatorHandle& op, Stack* stack) const {
   // note: this doesn't need the mutex because write operations on the list keep iterators intact.
+  debug_observe(op, stack);
   const auto& entry = op.operatorDef_->op;
   auto dispatchKeySet = entry.dispatchKeyExtractor().getDispatchKeySetBoxed(stack);
   const auto& kernel = entry.lookup(dispatchKeySet);

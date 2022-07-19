@@ -680,6 +680,9 @@ inline DispatchKey computeDispatchKey(
         case DeviceType::Metal:
           return DispatchKey::Metal;
         case DeviceType::Meta:
+          if (isQIntType(dtype_)) {
+            return DispatchKey::QuantizedMeta;
+          }
           return DispatchKey::Meta;
         case DeviceType::HPU:
           return DispatchKey::HPU;
@@ -705,6 +708,8 @@ inline DispatchKey computeDispatchKey(
           return DispatchKey::SparseVE;
         case DeviceType::XPU:
           return DispatchKey::SparseXPU;
+        case DeviceType::Meta:
+          return DispatchKey::SparseMeta;
         default:
           TORCH_CHECK_NOT_IMPLEMENTED(
               false,
@@ -715,6 +720,8 @@ inline DispatchKey computeDispatchKey(
       switch (device_.type()) {
         case DeviceType::CPU:
           return DispatchKey::MkldnnCPU;
+        case DeviceType::Meta:
+          return DispatchKey::MkldnnMeta;
         default:
           TORCH_CHECK_NOT_IMPLEMENTED(
               false,
@@ -730,6 +737,8 @@ inline DispatchKey computeDispatchKey(
           return DispatchKey::SparseCsrCPU;
         case DeviceType::CUDA:
           return DispatchKey::SparseCsrCUDA;
+        case DeviceType::Meta:
+          return DispatchKey::SparseCsrMeta;
         default:
           AT_ERROR(
               "Unsupported device type for ",
