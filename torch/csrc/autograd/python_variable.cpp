@@ -262,6 +262,9 @@ c10::SymIntArrayRef concrete_sym_sizes_fn(
 c10::Layout concrete_layout_fn(
     const c10::impl::PyInterpreter*,
     const c10::TensorImpl* self);
+void concrete_trace_cuda_event_creation_fn(
+    const c10::impl::PyInterpreter*,
+    uintptr_t event);
 
 class PyInterpreterHolder {
  public:
@@ -277,7 +280,8 @@ class PyInterpreterHolder {
             &concrete_strides_fn,
             &concrete_sizes_fn,
             &concrete_sym_sizes_fn,
-            &concrete_layout_fn)) {}
+            &concrete_layout_fn,
+            &trace_cuda_event_creation_fn)) {}
   // NB: intentionally leaks the memory
   ~PyInterpreterHolder() {
     impl_->disarm();
@@ -2443,6 +2447,10 @@ c10::Layout concrete_layout_fn(
       ", expected Layout");
 
   return toLayout(out.ptr());
+}
+
+void concrete_trace_cuda_event_creation_fn(const c10::impl::PyInterpreter*, uintptr_t event) {
+  // call into Python here
 }
 
 } // anonymous namespace

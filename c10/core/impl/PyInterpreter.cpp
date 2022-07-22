@@ -76,6 +76,9 @@ static c10::Layout noop_layout_fn(const PyInterpreter*, const TensorImpl*) {
       "attempted to call `layout` on Tensor with nontrivial PyObject after corresponding interpreter died");
 }
 
+static void noop_trace_cuda_event_creation_fn(const PyInterpreter*, uintptr_t) {
+}
+
 void PyInterpreter::disarm() noexcept {
   name_fn_ = &noop_name_fn;
   decref_fn_ = &noop_decref_fn;
@@ -88,6 +91,7 @@ void PyInterpreter::disarm() noexcept {
   sizes_fn_ = &noop_sizes_fn;
   sym_sizes_fn_ = &noop_sym_sizes_fn;
   layout_fn_ = &noop_layout_fn;
+  trace_cuda_event_creation_fn_ = &noop_trace_cuda_event_creation_fn;
 }
 
 } // namespace impl
