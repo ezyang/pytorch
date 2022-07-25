@@ -876,7 +876,9 @@ class CrossRefDispatchMode(TorchDispatchMode):
                     return t
             return go
 
-        if func not in [torch.ops.aten.lift_fresh.default]:
+        # empty_like excluded for now due to sparse complex
+        # aten._to_dense.default this one is getting called with csc
+        if func not in [torch.ops.aten.lift_fresh.default, torch.ops.aten.empty_like.default, torch.ops.aten.set_.source_Storage_storage_offset, torch.ops.aten.sspaddmm.out, torch.ops.aten._spdiags.default, torch.ops.aten._to_dense.default] and torch.Tag.dynamic_output_shape not in func.tags and torch.Tag.inplace_view not in func.tags:
             from torch._subclasses.fake_tensor import FakeTensorMode
             from torch.utils._pytree import tree_map
             with FakeTensorMode() as fake_mode:

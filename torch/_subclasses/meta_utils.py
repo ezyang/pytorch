@@ -148,16 +148,16 @@ class MetaConverter:
             with torch.inference_mode(t.is_inference()):
                 if t.is_sparse:
                     is_leaf = safe_is_leaf(t)
-                    # TODO: hybrid sparsity not captured here
-                    # (explicitly size the zero elem index value tensor)
                     r = torch.ops.aten._sparse_coo_tensor_with_dims(
                         t.sparse_dim(), t.dense_dim(), t.shape, dtype=t.dtype, layout=torch.sparse_coo, device='meta'
                     )
+                    r._coalesced_(t.is_coalesced())
                     if t.requires_grad:
                         r.requires_grad = True
                     if t.requires_grad and not is_leaf:
                         with torch.enable_grad():
                             r = r.clone()
+                            r._coalesced_(t.is_coalesced())
 
                 elif t._is_view():
                     # Construct views in two steps: recursively meta-fy their
@@ -227,9 +227,11 @@ class MetaConverter:
             if any(
                 [
                     t.is_sparse_csr,
+                    t.layout in [torch.sparse_csc, torch.sparse_bsr, torch.sparse_bsc],
                     t.is_mkldnn,
                     t.is_quantized,
                     t.is_nested,
+                    t._is_view() and t._base.is_sparse,
                     torch._is_functional_tensor(t),
                     # these are supported in meta conversion but the fallbacks
                     # don't work
