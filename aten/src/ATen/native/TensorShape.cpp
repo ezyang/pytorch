@@ -1261,6 +1261,26 @@ Tensor alias_with_sizes_and_strides(
   return self_;
 }
 
+Tensor alias_with_sizes_and_strides_symint(
+    const Tensor& self,
+    SymIntArrayRef sizes,
+    SymIntArrayRef strides) {
+  //caller should make sure that sizes and strides are valid for self
+  //(storage is sufficient, strides are non-negative, strides and sizes array size is the same)
+  Tensor self_;
+  if (self.is_quantized()) {
+    TORCH_INTERNAL_ASSERT(0, "NYI");
+  } else {
+    self_ = at::detail::make_tensor<TensorImpl>(
+      c10::TensorImpl::VIEW, Storage(self.storage()), self.key_set(), self.dtype());
+    auto* self_tmp_ = self_.unsafeGetTensorImpl();
+    self_tmp_->set_storage_offset(self.storage_offset()); // TODO: make symbolic
+    self_tmp_->set_sym_sizes_and_strides(sizes, strides);
+  }
+  namedinference::propagate_names(self_, self);
+  return self_;
+}
+
 Tensor reshape(const Tensor& self, IntArrayRef proposed_shape) {
   // reshape has special autograd logic since it sometimes returns a view but sometimes does not
   // we have to intercept here instead of using dispatcher
@@ -1317,6 +1337,14 @@ Tensor _reshape_alias(const Tensor& self, IntArrayRef sizes, IntArrayRef strides
   // the work that's already been done (`infer_size_dv` and `computeStride`).
 
   return alias_with_sizes_and_strides(self, sizes, strides);
+}
+
+Tensor _reshape_alias_symint(const Tensor& self, SymIntArrayRef sizes, SymIntArrayRef strides) {
+  // This is only used by `reshape` in cases where it would otherwise have dispatched
+  // to `view`. This removes the overhead of calling `view` which duplicates some of
+  // the work that's already been done (`infer_size_dv` and `computeStride`).
+
+  return alias_with_sizes_and_strides_symint(self, sizes, strides);
 }
 
 Tensor reshape_as(const Tensor& self, const Tensor& other) {
@@ -3532,6 +3560,11 @@ at::Tensor& _reshape_alias_copy_out(const at::Tensor & self, at::IntArrayRef siz
   return out;
 }
 
+at::Tensor& _reshape_alias_copy_out_symint(const Tensor& self, SymIntArrayRef sizes, SymIntArrayRef strides, at::Tensor& out) {
+  auto tmp = at::_reshape_alias_symint(self, sizes, strides);
+  out.copy_(tmp);
+  return out;
+}
 
 at::Tensor& select_copy_int_out(const at::Tensor & self, int64_t dim, int64_t index, at::Tensor & out) {
   auto tmp = self.select(dim, index);

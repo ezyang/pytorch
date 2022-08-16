@@ -660,6 +660,15 @@ class TestSymbolicTracing(TestCase):
         shape_env = self._test_dynamic(f, [(1, 2), (3, 1)], test_inputs)
         assert len(shape_env.guards) == 0
 
+    def test_embedding(self):
+        def f(a, b):
+            return torch.nn.functional.embedding(a, b)
+
+        input = torch.tensor([[1, 2, 4, 5], [4, 3, 2, 9]])
+        embedding_matrix = torch.rand(10, 3)
+        r = make_fx(f, tracing_mode="symbolic")(input, embedding_matrix)
+        print(r)
+
     def test_multiply_shape(self):
         def f(a):
             return torch.empty(a.shape[0] * 2)

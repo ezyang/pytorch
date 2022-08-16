@@ -4259,6 +4259,10 @@
     CPU, CUDA, Meta, QuantizedCPU, QuantizedCUDA, ZeroTensor, MPS: _reshape_alias
     # We don't need to support mkldnn since this is handled explicitly by the reshape operator.
 
+- func: _reshape_alias.SymInt(Tensor(a) self, SymInt[] size, SymInt[] stride) -> Tensor(a)
+  dispatch:
+    Meta: _reshape_alias_symint
+
 - func: _mkldnn_reshape(Tensor self, int[] shape) -> Tensor
   device_check: NoCheck
   device_guard: False
@@ -12777,6 +12781,12 @@
     CompositeExplicitAutogradNonFunctional: _reshape_alias_copy
   tags: view_copy
 
+- func: _reshape_alias_copy.SymInt(Tensor self, SymInt[] size, SymInt[] stride) -> Tensor
+  variants: function
+  dispatch:
+    CompositeExplicitAutogradNonFunctional: _reshape_alias_copy_symint
+  tags: view_copy
+
 - func: select_copy.int(Tensor self, int dim, int index) -> Tensor
   variants: function
   dispatch:
@@ -13001,6 +13011,11 @@
   variants: function
   dispatch:
     CompositeExplicitAutograd: _reshape_alias_copy_out
+
+- func: _reshape_alias_copy.SymInt_out(Tensor self, SymInt[] size, SymInt[] stride, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: _reshape_alias_copy_out_symint
 
 
 - func: select_copy.int_out(Tensor self, int dim, int index, *, Tensor(a!) out) -> Tensor(a!)
