@@ -112,12 +112,14 @@ def track_tensor(tensor, proxy, *, constant, tracer):
         if isinstance(outer_s, SymInt):
             inner_s = outer_s.get_pyobj()
             assert isinstance(inner_s, PySymInt)
-            # TODO: improve naming
-            # TODO: lazily insert this into the graph only on first
-            # use?  Maybe complicated and DCE is a better idea
-            s_proxy = proxy_callable()
-            set_proxy_slot(inner_s, tracer, s_proxy)
-            set_meta(s_proxy, inner_s)
+            proxy = None
+
+            def thunk():
+                nonlocal proxy
+                if proxy is None:
+                    proxy = proxy_callable(inner_s)
+                return proxy
+            set_proxy_slot(inner_s, tracer, thunk)
 
     # The basic idea is that we need to associate each tensor/SymInt
     # with a Proxy.  How do we setup this association?  We just store
@@ -125,13 +127,13 @@ def track_tensor(tensor, proxy, *, constant, tracer):
     # (so that if we have multiple tracers at the same time, they
     # don't clobber each other.)
     for i, s in enumerate(tensor.shape):
-        try_set_proxy_slot(s, lambda: torch.ops.aten.sym_size(proxy, i))
+        try_set_proxy_slot(s, lambda x: set_meta(torch.ops.aten.sym_size(proxy, i), x))
 
     for i, s in enumerate(tensor.stride()):
-        try_set_proxy_slot(s, lambda: torch.ops.aten.sym_stride(proxy, i))
+        try_set_proxy_slot(s, lambda x: set_meta(torch.ops.aten.sym_stride(proxy, i), x))
 
-    try_set_proxy_slot(tensor.numel(), lambda: torch.ops.aten.sym_numel(proxy))
-    try_set_proxy_slot(tensor.storage_offset(), lambda: torch.ops.aten.sym_storage_offset(proxy))
+    try_set_proxy_slot(tensor.numel(), lambda x: set_meta(torch.ops.aten.sym_numel(proxy), x))
+    try_set_proxy_slot(tensor.storage_offset(), lambda: set_meta(torch.ops.aten.sym_storage_offset(proxy), x))
     set_proxy_slot(tensor, tracer, _ProxyTensor(proxy, constant))
 
 def track_tensor_tree(inner_res, proxy_res, *, constant, tracer):
@@ -185,7 +187,7 @@ def fetch_sym_proxy(tracer):
             return n.constant
         else:
             # NB: we REQUIRE all symints to be tracked
-            return get_proxy_slot(n, tracer)
+            return get_proxy_slot(n, tracer)()
     return inner
 
 
@@ -450,17 +452,7 @@ class ProxyTorchDispatchMode(TorchDispatchMode):
         if func in [prim.device.default]:
             return func(*args, **kwargs)
 
-        out = proxy_call(self, func, args, kwargs)
-
-        def assert_proxy_tensor(e):
-            assert has_proxy_slot(e, self.tracer), \
-                f"Internal Error: make_fx is incorrectly baking a tensor constant into the graph: {str(e)}"
-
-        # When we trace factory functions, we expect that tensor outputs are *always* tracked.
-        # (Except for torch.tensor() constants handled through lift(), which is handled
-        # specially further up).
-        pytree.tree_map_only(torch.Tensor, assert_proxy_tensor, out)
-        return out
+        return proxy_call(self, func, args, kwargs)
 
 
 SymInt = torch.SymIntNode
@@ -493,7 +485,7 @@ class ProxySymDispatchMode(SymDispatchMode):
         # We also assume there are no keyword arguments.
         assert not kwargs
         n_args = tuple(
-            get_proxy_slot(a, self.tracer).node if a.constant is None else a.constant
+            get_proxy_slot(a, self.tracer)().node if a.constant is None else a.constant
             if isinstance(a, (PySymInt, PySymFloat)) else a
             for a in args
         )
@@ -505,7 +497,7 @@ class ProxySymDispatchMode(SymDispatchMode):
         out = func(*args, **kwargs)
         set_meta(p_out, out)
         assert isinstance(out, (PySymInt, PySymFloat)), f"{func}(*{args}, **{kwargs}) = {out}"
-        set_proxy_slot(out, self.tracer, p_out)
+        set_proxy_slot(out, self.tracer, lambda: p_out)
         return out
 
 
