@@ -3,6 +3,7 @@
 #include <ATen/detail/CUDAHooksInterface.h>
 #include <c10/core/CPUAllocator.h>
 #include <c10/util/safe_numerics.h>
+#include <c10/util/strides.h>
 
 #include <limits>
 
@@ -368,27 +369,21 @@ TensorBase empty_symint_meta(
 
   int64_t dim = size.size();
   c10::SymDimVector strides;
-  strides.resize(dim);
 
   // TODO: Move this into TensorImpl
   auto memory_format = memory_format_opt.value_or(MemoryFormat::Contiguous);
   switch (memory_format) {
-    case MemoryFormat::Contiguous: {
-      if (dim > 0) {
-        const auto last_idx = dim - 1;
-        strides.at(last_idx) = 1;
-        for (auto i = last_idx - 1; i >= 0; --i) {
-          // TODO: max with 1
-          strides.at(i) = strides.at(i+1) * size.at(i+1);
-        }
-      }
+    case MemoryFormat::Contiguous:
+      strides = c10::contiguous_strides(size);
       break;
-    }
     default:
       TORCH_CHECK(0, "other memory format not implemented yet");
   }
 
-  tensor.unsafeGetTensorImpl()->set_sizes_and_strides(size, strides);
+  // NB: we still have to test strides if it has symbolic, because
+  // strides ignore the outermost size, which might be the only
+  // symbolic size
+  tensor.unsafeGetTensorImpl()->set_sizes_and_strides(size, SymIntArrayRef(SymIntArrayRef::SLOW, strides));
 
   return tensor;
 }

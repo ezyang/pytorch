@@ -29,12 +29,32 @@ class SymDimVectorWithIsSymbolic {
     return false;
   }
 
+  void debugCheckIsSymbolicInvariant() {
+    TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
+        is_symbolic_ == computeSymbolic(),
+        "created SymDimVectorWithIsSymbolic with incorrect IsSymbolic tag; real tag is ",
+        !is_symbolic_);
+  }
+
 public:
   enum Slow { SLOW };
+  enum KnownNonSymbolic { KNOWN_NON_SYMBOLIC };
+  enum KnownSymbolic { KNOWN_SYMBOLIC };
+
+  using element_type = c10::SymInt;
 
   SymDimVectorWithIsSymbolic() : data_(), is_symbolic_(false) {}
   SymDimVectorWithIsSymbolic(SymIntArrayRef sa) : data_(sa), is_symbolic_(sa.is_symbolic()) {}
-  SymDimVectorWithIsSymbolic(Slow, SymDimVector data) : data_(data), is_symbolic_(computeSymbolic()) {}
+  // We don't mark this as SLOW, because moving it in means we freshly
+  // created the vector, which means we've already paid O(n) and it's OK
+  // to do another O(n) scan
+  SymDimVectorWithIsSymbolic(SymDimVector&& data) : data_(std::move(data)), is_symbolic_(computeSymbolic()) {}
+  SymDimVectorWithIsSymbolic(KnownNonSymbolic, SymDimVector&& data) : data_(std::move(data)), is_symbolic_(false) {
+    debugCheckIsSymbolicInvariant();
+  }
+  SymDimVectorWithIsSymbolic(KnownSymbolic, SymDimVector&& data) : data_(std::move(data)), is_symbolic_(true) {
+    debugCheckIsSymbolicInvariant();
+  }
   SymDimVectorWithIsSymbolic(std::initializer_list<c10::SymInt> data) : data_(data), is_symbolic_(computeSymbolic()) {}
 
   bool is_symbolic() const {

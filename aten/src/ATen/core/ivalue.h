@@ -723,8 +723,7 @@ public:
   IValue(at::ArrayRef<T> v);
   template <class T, enable_if_symint<T> = nullptr>
   IValue(at::OptionalArrayRef<T> v);
-  template <class T, enable_if_symint<T> = nullptr>
-  IValue(const std::vector<T>& v);
+  IValue(const c10::SymDimVectorWithIsSymbolic&);
 
   template <class T>
   using enable_if_ilist_is_ivalue_constructible = std::enable_if_t<

@@ -1639,6 +1639,19 @@ std::vector<Elem> generic_to(IValue ivalue, _fake_type<std::vector<Elem>>) {
   return result;
 }
 
+c10::SymDimVectorWithIsSymbolic generic_to(IValue ivalue, _fake_type<c10::SymDimVectorWithIsSymbolic>) {
+  // We need to do a deep copy of the vector because there might be other
+  // references to this same IValue that also use the list. We can't just
+  // move the elements out.
+  auto list = std::move(ivalue).to<List<c10::SymInt>>();
+  c10::SymDimVector result;
+  result.reserve(list.size());
+  for (c10::SymInt v : list) {
+    result.push_back(std::move(v));
+  }
+  return c10::SymDimVectorWithIsSymbolic(c10::SymDimVectorWithIsSymbolic::KNOWN_SYMBOLIC, std::move(result));
+}
+
 template <typename T>
 c10::intrusive_ptr<T> IValue::toCustomClass() && {
   static_assert(
@@ -2036,9 +2049,8 @@ inline IValue::IValue(at::OptionalArrayRef<T> mb_v) : IValue() {
   if (!mb_v.has_value()) return;
   *this = IValue(*mb_v);
 }
-template <class T, IValue::enable_if_symint<T>>
-inline IValue::IValue(const std::vector<T>& v) : IValue() {
-  *this = IValue(at::ArrayRef<T>(v));
+inline IValue::IValue(const c10::SymDimVectorWithIsSymbolic& v) : IValue() {
+  *this = IValue(c10::SymIntArrayRef(v));
 }
 template <class T, IValue::enable_if_list_is_ivalue_constructible<T>>
 inline IValue::IValue(const std::vector<T>& v) : IValue(c10::List<T>()) {

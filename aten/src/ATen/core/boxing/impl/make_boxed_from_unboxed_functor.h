@@ -360,14 +360,14 @@ namespace impl {
   };
   template<bool AllowDeprecatedTypes>
   struct ivalue_to_arg<c10::SymIntArrayRef, AllowDeprecatedTypes> final {
-    static c10::SymDimVector call(IValue& v) {
+    static c10::SymDimVectorWithIsSymbolic call(IValue& v) {
       if (v.isIntList()) {
         c10::SymDimVector r;
         auto src = v.toIntList();
         std::transform(src.begin(), src.end(), std::back_inserter(r), [](int64_t i) { return c10::SymInt(i); });
-        return r;
+        return c10::SymDimVectorWithIsSymbolic(SymDimVectorWithIsSymbolic::KNOWN_NON_SYMBOLIC, std::move(r));
       } else {
-        return ivalue_to_arg<c10::SymDimVector, AllowDeprecatedTypes>::call(v);
+        return ivalue_to_arg<c10::SymDimVectorWithIsSymbolic, AllowDeprecatedTypes>::call(v);
       }
     }
   };

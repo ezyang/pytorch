@@ -270,10 +270,10 @@ at::Tensor _unsafe_view_functionalize(const at::Tensor & self, at::SymIntArrayRe
   }
 
   at::functionalization::ViewMeta view_meta = at::functionalization::ViewMeta(
-    [size = size.vec()](const at::Tensor & base, int64_t mutated_view_idx) -> at::Tensor {
+    [size = c10::SymDimVectorWithIsSymbolic(size)](const at::Tensor & base, int64_t mutated_view_idx) -> at::Tensor {
       return at::_unsafe_view_symint(base, size);
     },
-    [size = size.vec()](const at::Tensor & base, const at::Tensor & mutated_view, int64_t mutated_view_idx) -> at::Tensor {
+    [size = c10::SymDimVectorWithIsSymbolic(size)](const at::Tensor & base, const at::Tensor & mutated_view, int64_t mutated_view_idx) -> at::Tensor {
       return at::_unsafe_view_symint(mutated_view, base.sym_sizes());
     }
   );
@@ -281,10 +281,11 @@ at::Tensor _unsafe_view_functionalize(const at::Tensor & self, at::SymIntArrayRe
   auto out = at::functionalization::impl::create_functional_tensor_with_view_meta(tmp_output, self, view_meta);
   // See  Note [Propagating strides in the functionalization pass]
   // (for _unsafe_view, I'm just manually doing the shape inference rule here instead of calling the meta function for unsafe_view)
-  auto inferred_size = at::infer_size_dv(size, self.sym_numel());
-  auto stride = at::detail::computeStride(self.sym_sizes(), self.sym_strides(), inferred_size);
-  TORCH_INTERNAL_ASSERT(stride.has_value());
-  out.unsafeGetTensorImpl()->set_sizes_and_strides(inferred_size, stride.value());
+  c10::SymDimVectorWithIsSymbolic inferred_size = at::infer_size_dv(size, self.sym_numel());
+  auto mb_stride = at::detail::computeStride(self.sym_sizes(), self.sym_strides(), inferred_size);
+  TORCH_INTERNAL_ASSERT(mb_stride.has_value());
+  c10::SymDimVectorWithIsSymbolic stride = std::move(mb_stride).value();
+  out.unsafeGetTensorImpl()->set_sizes_and_strides(inferred_size, stride);
   return out;
 }
 

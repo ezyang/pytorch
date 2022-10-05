@@ -18,7 +18,7 @@ struct TORCH_API TensorGeometry {
 
   explicit TensorGeometry(c10::SymIntArrayRef sizes)
       : sizes_(sizes),
-        strides_(SymDimVectorWithIsSymbolic::SLOW, c10::contiguous_strides(sizes)),
+        strides_(c10::contiguous_strides(sizes)),
         storage_offset_(0),
         numel_(c10::multiply_integers(sizes)),
         has_symbolic_sizes_strides_(sizes_.is_symbolic()) {
