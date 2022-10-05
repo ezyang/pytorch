@@ -613,7 +613,7 @@ Tensor instance_norm(
 
  TORCH_CHECK(use_input_stats || (running_mean.defined() && running_var.defined()),
            "Expected running_mean and running_var to be defined when use_input_stats is false");
-  std::vector<SymInt> shape = input.sym_sizes().vec();
+  c10::SymDimVector shape = input.sym_sizes();
   SymInt b = input.sym_size(0);
   SymInt c = input.sym_size(1);
   shape[1] = b * c;

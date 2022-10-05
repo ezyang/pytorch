@@ -558,7 +558,7 @@ def process_function(info: DifferentiabilityInfo, template: CodeTemplate) -> str
                 )
             )
         elif type == BaseCType(symIntArrayRefT):
-            saved_variables.append(f"std::vector<c10::SymInt> {name};")
+            saved_variables.append(f"c10::SymDimVector {name};")
             getter_definitions.append(
                 GETTER_DEFINITION.substitute(
                     op=info.op, name=name, body=GETTER_BODY_ARRAYREF_SYMINT

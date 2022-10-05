@@ -53,7 +53,7 @@ struct TypeAndSize {
   Tensor zeros() { return at::zeros_symint(sym_sizes, options); }
 
 private:
-  std::vector<c10::SymInt> sym_sizes;
+  c10::SymDimVector sym_sizes;
   at::TensorOptions options;
 };
 

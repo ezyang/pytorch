@@ -360,14 +360,14 @@ namespace impl {
   };
   template<bool AllowDeprecatedTypes>
   struct ivalue_to_arg<c10::SymIntArrayRef, AllowDeprecatedTypes> final {
-    static std::vector<c10::SymInt> call(IValue& v) {
+    static c10::SymDimVector call(IValue& v) {
       if (v.isIntList()) {
-        std::vector<c10::SymInt> r;
+        c10::SymDimVector r;
         auto src = v.toIntList();
         std::transform(src.begin(), src.end(), std::back_inserter(r), [](int64_t i) { return c10::SymInt(i); });
         return r;
       } else {
-        return ivalue_to_arg<std::vector<c10::SymInt>, AllowDeprecatedTypes>::call(v);
+        return ivalue_to_arg<c10::SymDimVector, AllowDeprecatedTypes>::call(v);
       }
     }
   };
@@ -375,7 +375,7 @@ namespace impl {
   struct ivalue_to_arg<c10::OptionalArray<c10::SymInt>, AllowDeprecatedTypes> final {
     static OptionalArray<c10::SymInt> call(IValue& v) {
       if (v.isIntList()) {
-        std::vector<c10::SymInt> r;
+        c10::SymDimVector r;
         auto src = v.toIntList();
         std::transform(src.begin(), src.end(), std::back_inserter(r), [](int64_t i) { return c10::SymInt(i); });
         return OptionalArray<c10::SymInt>(r);

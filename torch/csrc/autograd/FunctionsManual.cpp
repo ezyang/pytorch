@@ -2781,7 +2781,7 @@ Tensor as_strided_backward(
   auto sym_storage_offset =
       sym_storage_offset_.value_or(input_geometry.sym_storage_offset());
   auto odim = grad.dim();
-  std::vector<c10::SymInt> out_sizes_, out_strides_;
+  c10::SymDimVector out_sizes_, out_strides_;
   out_sizes_.reserve(odim);
   out_strides_.reserve(odim);
   for (int64_t i = odim - 1; i >= 0; i--) {
@@ -2812,7 +2812,7 @@ Tensor as_strided_backward(
   auto idim = input_geometry.dim();
   auto inp_sizes = input_geometry.sym_sizes(),
        inp_strides = input_geometry.sym_strides();
-  std::vector<c10::SymInt> inp_sizes_, inp_strides_;
+  c10::SymDimVector inp_sizes_, inp_strides_;
   inp_sizes_.reserve(idim);
   inp_strides_.reserve(idim);
   for (int64_t i = idim - 1; i >= 0; i--) {

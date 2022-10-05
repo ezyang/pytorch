@@ -115,8 +115,8 @@ struct TORCH_API TensorGeometry {
   }
 
  private:
-  std::vector<c10::SymInt> sizes_;
-  std::vector<c10::SymInt> strides_;
+  c10::SymDimVector sizes_;
+  c10::SymDimVector strides_;
   c10::SymInt storage_offset_;
   c10::SymInt numel_;
   bool has_symbolic_sizes_strides_;

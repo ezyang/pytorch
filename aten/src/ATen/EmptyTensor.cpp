@@ -367,7 +367,7 @@ TensorBase empty_symint_meta(
       std::move(storage_impl), meta_dks, dtype);
 
   int64_t dim = size.size();
-  std::vector<SymInt> strides;
+  c10::SymDimVector strides;
   strides.resize(dim);
 
   // TODO: Move this into TensorImpl

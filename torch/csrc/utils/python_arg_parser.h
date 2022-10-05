@@ -310,7 +310,7 @@ struct PythonArgs {
   template <int N>
   inline std::array<at::Tensor, N> tensorlist_n(int i);
   inline std::vector<int64_t> intlist(int i);
-  inline std::vector<c10::SymInt> symintlist(int i);
+  inline c10::SymDimVector symintlist(int i);
   inline c10::OptionalArray<int64_t> intlistOptional(int i);
   inline c10::OptionalArray<c10::SymInt> symintlistOptional(int i);
   inline std::vector<int64_t> intlistWithDefault(
@@ -595,7 +595,7 @@ inline void throw_intlist_exception(
       idx + 1);
 }
 
-inline std::vector<c10::SymInt> PythonArgs::symintlist(int i) {
+inline c10::SymDimVector PythonArgs::symintlist(int i) {
   if (!args[i]) {
     return c10::fmap(signature.params[i].default_intlist, [](int64_t di) {
       return c10::SymInt(di);
@@ -604,20 +604,20 @@ inline std::vector<c10::SymInt> PythonArgs::symintlist(int i) {
 
   const auto size1 = signature.params[i].size;
   if (size1 > 0 && THPUtils_checkLong(args[i])) {
-    return std::vector<c10::SymInt>(
+    return c10::SymDimVector(
         size1, c10::SymInt(THPUtils_unpackIndex(args[i])));
   }
 
   if (size1 > 0 && torch::is_symint_node(py::handle(args[i]))) {
     auto si = py::handle(args[i]).cast<c10::SymIntNodeImpl*>()->toSymInt();
-    return std::vector<c10::SymInt>(size1, si);
+    return c10::SymDimVector(size1, si);
   }
 
   PyObject* arg = args[i];
   auto tuple = PyTuple_Check(arg);
   // NOLINTNEXTLINE(bugprone-branch-clone)
   const auto size2 = tuple ? PyTuple_GET_SIZE(arg) : PyList_GET_SIZE(arg);
-  std::vector<c10::SymInt> res;
+  c10::SymDimVector res;
   res.reserve(size2);
   for (const auto idx : c10::irange(size2)) {
     PyObject* obj =
