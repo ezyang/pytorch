@@ -343,7 +343,8 @@ Check this module for more information.
             except UnsatError:
                 return direct_solve(NamedCType(goal.name, longSymVec_ctype))
         elif goal.type == BaseCType(SymIntT):
-            return direct_solve(NamedCType(goal.name, BaseCType(longT)))
+            r = direct_solve(NamedCType(goal.name, BaseCType(longT)))
+            return f"c10::SymInt(r)"
         elif goal.type == OptionalCType(BaseCType(SymIntT)):
             argname = direct_solve(
                 NamedCType(goal.name, OptionalCType(BaseCType(longT)))

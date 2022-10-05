@@ -95,7 +95,7 @@ class C10_API Scalar {
       return c10::SymInt::toSymInt(intrusive_ptr<SymIntNodeImpl>::reclaim_copy(
           static_cast<SymIntNodeImpl*>(v.p)));
     } else {
-      return toLong();
+      return SymInt(toLong());
     }
   }
 
@@ -105,7 +105,7 @@ class C10_API Scalar {
           intrusive_ptr<SymFloatNodeImpl>::reclaim_copy(
               static_cast<SymFloatNodeImpl*>(v.p)));
     } else {
-      return toLong();
+      return SymFloat(toDouble());
     }
   }
 

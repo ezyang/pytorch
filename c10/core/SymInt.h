@@ -45,7 +45,7 @@ class C10_API SymInt {
     UNCHECKED,
   };
 
-  /*implicit*/ SymInt(int64_t d) : data_(d) {
+  explicit SymInt(int64_t d) : data_(d) {
     SKIP_IS_SYMBOLIC_ON_MOBILE(!is_symbolic());
   };
   SymInt() : data_(0) {}

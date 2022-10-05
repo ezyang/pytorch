@@ -76,7 +76,7 @@ struct C10_API StorageImpl : public c10::intrusive_ptr_target {
 
   void reset() {
     data_ptr_.clear();
-    size_bytes_ = 0;
+    size_bytes_ = c10::SymInt(0);
     size_bytes_is_symbolic_ = false;
   }
 
@@ -107,7 +107,7 @@ struct C10_API StorageImpl : public c10::intrusive_ptr_target {
 
   // TODO: remove later
   void set_nbytes(size_t size_bytes) {
-    size_bytes_ = size_bytes;
+    size_bytes_ = SymInt(size_bytes);
     size_bytes_is_symbolic_ = false;
   }
 
@@ -197,7 +197,7 @@ struct C10_API StorageImpl : public c10::intrusive_ptr_target {
       at::DataPtr&& data_ptr,
       size_t size_bytes) {
     data_ptr_ = std::move(data_ptr);
-    size_bytes_ = size_bytes;
+    size_bytes_ = c10::SymInt(size_bytes);
     size_bytes_is_symbolic_ = false;
     allocator_ = nullptr;
     resizable_ = false;

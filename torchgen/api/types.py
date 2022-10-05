@@ -429,6 +429,9 @@ class CppSignature:
     # offered at a different overload name
     symint: bool
 
+    # If true, don't put _symint suffix.  For testing
+    overload_symint: bool
+
     # The set of C++ arguments which should not have defaults applied to them
     cpp_no_default_args: Set[str]
 
@@ -454,7 +457,7 @@ class CppSignature:
         n = cpp.name(
             self.func,
             faithful_name_for_out_overloads=self.faithful,
-            symint_overload=self.symint,
+            symint_overload=self.overload_symint,
         )
         if self.fallback_binding:
             n = f"__dispatch_{n}"
@@ -520,6 +523,8 @@ class CppSignatureGroup:
     faithful_signature: Optional[CppSignature]
     symint_signature: Optional[CppSignature]
     symint_faithful_signature: Optional[CppSignature]
+    overload_symint_signature: Optional[CppSignature]
+    overload_symint_faithful_signature: Optional[CppSignature]
 
     def most_faithful_signature(self) -> CppSignature:
         if self.faithful_signature:
@@ -536,6 +541,10 @@ class CppSignatureGroup:
                 yield self.symint_signature
             if self.symint_faithful_signature:
                 yield self.symint_faithful_signature
+            if self.overload_symint_signature:
+                yield self.overload_symint_signature
+            if self.overload_symint_faithful_signature:
+                yield self.overload_symint_faithful_signature
 
     @staticmethod
     def from_native_function(
@@ -543,28 +552,32 @@ class CppSignatureGroup:
     ) -> "CppSignatureGroup":
         func = f.func
 
-        def make_sig(*, faithful: bool, symint: bool) -> CppSignature:
+        def make_sig(*, faithful: bool, symint: bool, overload_symint: bool) -> CppSignature:
             return CppSignature(
                 func=func,
                 faithful=faithful,
                 symint=symint,
+                overload_symint=overload_symint,
                 method=method,
                 fallback_binding=fallback_binding,
                 cpp_no_default_args=f.cpp_no_default_args,
             )
 
-        def make_sigs(*, symint: bool) -> Tuple[CppSignature, Optional[CppSignature]]:
+        def make_sigs(*, symint: bool, overload_symint: bool = False) -> Tuple[CppSignature, Optional[CppSignature]]:
             faithful_signature: Optional[CppSignature] = None
             if func.arguments.tensor_options is not None or len(func.arguments.out) > 0:
-                faithful_signature = make_sig(faithful=True, symint=symint)
-            signature = make_sig(faithful=False, symint=symint)
+                faithful_signature = make_sig(faithful=True, symint=symint, overload_symint=overload_symint)
+            signature = make_sig(faithful=False, symint=symint, overload_symint=overload_symint)
             return signature, faithful_signature
 
         signature, faithful_signature = make_sigs(symint=False)
         symint_signature: Optional[CppSignature] = None
         symint_faithful_signature: Optional[CppSignature] = None
+        overload_symint_signature: Optional[CppSignature] = None
+        overload_symint_faithful_signature: Optional[CppSignature] = None
         if func.has_symint():
             symint_signature, symint_faithful_signature = make_sigs(symint=True)
+            overload_symint_signature, overload_symint_faithful_signature = make_sigs(symint=True, overload_symint=True)
 
         return CppSignatureGroup(
             func=func,
@@ -572,6 +585,8 @@ class CppSignatureGroup:
             faithful_signature=faithful_signature,
             symint_signature=symint_signature,
             symint_faithful_signature=symint_faithful_signature,
+            overload_symint_signature=overload_symint_signature,
+            overload_symint_faithful_signature=overload_symint_faithful_signature,
         )
 
 

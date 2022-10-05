@@ -118,7 +118,7 @@ template <typename T>
 inline bool is_channels_last_strides_2d_s4(
     const ArrayRef<T> sizes,
     const ArrayRef<T> strides) {
-  T min = 0;
+  T min = T(0);
   // special case for trivial C dimension. default to NCHW
   if (strides[1] == 0) {
     return false;
@@ -160,7 +160,7 @@ template <typename T>
 inline bool is_channels_last_strides_3d_s5(
     const ArrayRef<T> sizes,
     const ArrayRef<T> strides) {
-  T min = 0;
+  T min = T(0);
   if (strides[1] == 0) {
     return false;
   }

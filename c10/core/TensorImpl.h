@@ -251,10 +251,10 @@ using bool_is_non_overlapping_and_dense =
     strong_bool<struct bool_is_non_overlapping_and_dense_>;
 
 struct C10_API ExtraMeta {
-  SymDimVector sizes_ = {0};
-  SymDimVector strides_ = {1};
-  SymInt numel_ = 1;
-  SymInt storage_offset_ = 0;
+  SymDimVector sizes_{0};
+  SymDimVector strides_{1};
+  SymInt numel_{1};
+  SymInt storage_offset_{0};
   // TODO: make these all SymBool
   bool_is_contiguous is_contiguous_{true};
   bool_is_channels_last_contiguous is_channels_last_contiguous_{false};
@@ -2471,7 +2471,7 @@ struct C10_API TensorImpl : public c10::intrusive_ptr_target {
 
   SymInt compute_sym_numel() const {
     TORCH_INTERNAL_ASSERT_DEBUG_ONLY(has_symbolic_sizes_strides_);
-    SymInt numel = 1;
+    SymInt numel = SymInt(1);
     for (const auto& s : extra_meta_->sizes_) {
       numel *= s;
     }

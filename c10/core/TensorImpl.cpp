@@ -235,7 +235,7 @@ bool_is_contiguous _compute_contiguous(
   bool is_contiguous = true;
   if (numel == 0)
     return bool_is_contiguous(is_contiguous);
-  T z = 1;
+  T z = T(1);
   // NB: make sure we do signed arithmetic
   for (int64_t d = int64_t(sizes.size()) - 1; d >= 0; d--) {
     const auto size_d = sizes[d];
@@ -256,7 +256,7 @@ bool_is_contiguous _compute_contiguous(
 #define COMPUTE_WITH_SIZES_STRIDES_NUMEL(TEMPLATE)                            \
   (has_symbolic_sizes_strides_                                                \
        ? TEMPLATE<c10::SymInt>(                                               \
-             extra_meta_->sizes_, extra_meta_->strides_, extra_meta_->numel_) \
+             SymIntArrayRef(extra_meta_->sizes_), SymIntArrayRef(extra_meta_->strides_), extra_meta_->numel_) \
        : TEMPLATE<int64_t>(                                                   \
              sizes_and_strides_.sizes_arrayref(),                             \
              sizes_and_strides_.strides_arrayref(),                           \
@@ -264,7 +264,7 @@ bool_is_contiguous _compute_contiguous(
 
 #define COMPUTE_WITH_SIZES_STRIDES(TEMPLATE)                               \
   (has_symbolic_sizes_strides_                                             \
-       ? TEMPLATE<c10::SymInt>(extra_meta_->sizes_, extra_meta_->strides_) \
+       ? TEMPLATE<c10::SymInt>(SymIntArrayRef(extra_meta_->sizes_), SymIntArrayRef(extra_meta_->strides_)) \
        : TEMPLATE<int64_t>(                                                \
              sizes_and_strides_.sizes_arrayref(),                          \
              sizes_and_strides_.strides_arrayref()))
@@ -315,7 +315,7 @@ bool_is_channels_last_3d_contiguous _compute_channels_last_contiguous_3d(
   // compiler fully unroll the loop to get better performance
   switch (sizes.size()) {
     case 5: {
-      T expected = 1;
+      T expected = T(1);
       for (auto& d : {1, 4, 3, 2, 0}) {
         const auto size_d = sizes[d];
         if (size_d != 1) {
@@ -375,7 +375,7 @@ bool_is_non_overlapping_and_dense _compute_non_overlapping_and_dense(
     }
     return strides[a] < strides[b];
   });
-  T require_stride = 1;
+  T require_stride = T(1);
   for (const auto i : c10::irange(dim)) {
     const auto size_perm_i = sizes[perm[i]];
     if (size_perm_i < 2) {
