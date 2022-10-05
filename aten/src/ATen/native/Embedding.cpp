@@ -24,12 +24,12 @@ Tensor embedding(const Tensor & weight, const Tensor & indices,
     return weight.index_select(0, indices);
   }
 
-  auto size = indices.sym_sizes().vec();
+  c10::SymDimVector size(indices.sym_sizes());
   for (auto d : weight.sym_sizes().slice(1)) {
     size.push_back(d);
   }
 
-  return weight.index_select(0, indices.reshape(-1)).view_symint(size);
+  return weight.index_select(0, indices.reshape(-1)).view_symint(c10::SymDimVectorWithIsSymbolic(std::move(size)));
 }
 
 Tensor embedding_backward_symint(

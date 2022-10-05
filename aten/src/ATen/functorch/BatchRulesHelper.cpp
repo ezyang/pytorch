@@ -128,7 +128,7 @@ Tensor reshape_dim_outof_symint(int64_t src, c10::SymInt size1, const Tensor& x)
   auto size2 = shape[src] / size1;
   shape[src] = size1;
   shape.insert(shape.begin() + src + 1, size2);
-  return at::reshape_symint(x, shape);
+  return at::reshape_symint(x, c10::SymDimVectorWithIsSymbolic(std::move(shape)));
 }
 
 void vmapIncompatibleInplaceError(const char* schema_name) {

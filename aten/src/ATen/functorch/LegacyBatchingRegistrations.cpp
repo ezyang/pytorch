@@ -494,7 +494,7 @@ Tensor as_strided_batching_rule(
   // and creates a tensor y such that each y[i] references the same memory
   // locations as zi. See NOTE: [When will the as_strided batching rule fail?]
   auto result = physical_view.tensor().as_strided_symint(
-      physical_sizes, physical_strides, storage_offset);
+      physical_sizes, c10::SymDimVectorWithIsStrided(std::move(physical_strides)), storage_offset);
   return physical_view.getPhysicalToLogicalMap().apply(result);
 }
 
