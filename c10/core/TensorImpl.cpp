@@ -946,14 +946,6 @@ void TensorImpl::ShareExternalPointer(
   }
 }
 
-void clone_symvec(SymIntArrayRef src, SymDimVector& dst) {
-  dst.clear();
-  dst.reserve(src.size());
-  for (size_t i = 0; i < src.size(); i++) {
-    dst.emplace_back(src[i].clone());
-  }
-}
-
 // NB: this doesn't check that the sizes/strides/offset are in bound for the
 // storage, and furthermore, it CANNOT do so as in some cases we temporarily
 // violate invariants by first setting sizes/strides, and then updating the
@@ -981,8 +973,8 @@ void TensorImpl::set_sizes_and_strides(
       extra_meta_->storage_offset_ = storage_offset_;
     }
   }
-  clone_symvec(sizes, extra_meta_->sizes_);
-  clone_symvec(strides, extra_meta_->strides_);
+  extra_meta_->sizes_.cloneFrom(sizes);
+  extra_meta_->strides_.cloneFrom(strides);
   if (storage_offset.has_value())
     extra_meta_->storage_offset_ = storage_offset->clone();
 

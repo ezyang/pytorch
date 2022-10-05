@@ -2,6 +2,7 @@
 
 #include <ATen/core/TensorBase.h>
 #include <c10/core/WrapDimMinimal.h>
+#include <c10/util/strides.h>
 
 namespace at {
 
@@ -16,27 +17,20 @@ struct TORCH_API TensorGeometry {
   TensorGeometry() : storage_offset_(0) {}
 
   explicit TensorGeometry(c10::SymIntArrayRef sizes)
-      : sizes_(sizes.vec()),
-        strides_(sizes.size()),
+      : sizes_(sizes),
+        strides_(SymDimVectorWithIsSymbolic::SLOW, c10::contiguous_strides(sizes)),
         storage_offset_(0),
-        has_symbolic_sizes_strides_(
-            !c10::asIntArrayRefSlowOpt(sizes).has_value()) {
-    int64_t dim = sizes.size();
-    c10::SymInt expected_stride = 1;
-    for (int64_t i = dim - 1; i >= 0; i--) {
-      strides_[i] = expected_stride;
-      expected_stride *= sizes_[i];
-    }
-    numel_ = expected_stride;
+        numel_(c10::multiply_integers(sizes)),
+        has_symbolic_sizes_strides_(sizes_.is_symbolic()) {
   }
 
   explicit TensorGeometry(const TensorBase& t)
-      : sizes_(t.sym_sizes().vec()),
-        strides_(t.sym_strides().vec()),
+      : sizes_(t.sym_sizes()),
+        strides_(t.sym_strides()),
         storage_offset_(t.sym_storage_offset()),
         numel_(t.sym_numel()),
-        has_symbolic_sizes_strides_(
-            t.unsafeGetTensorImpl()->has_symbolic_sizes_strides()) {}
+        has_symbolic_sizes_strides_(t.unsafeGetTensorImpl()->has_symbolic_sizes_strides())
+        {}
 
   // true if the tensor is contiguous
   bool is_contiguous() const;
@@ -109,14 +103,14 @@ struct TORCH_API TensorGeometry {
         " out of range (dim=",
         dim(),
         ")")
-    std::swap(r.sizes_[dim0], r.sizes_[dim1]);
-    std::swap(r.strides_[dim0], r.strides_[dim1]);
+    r.sizes_.transpose(dim0, dim1);
+    r.strides_.transpose(dim0, dim1);
     return r;
   }
 
  private:
-  c10::SymDimVector sizes_;
-  c10::SymDimVector strides_;
+  c10::SymDimVectorWithIsSymbolic sizes_;
+  c10::SymDimVectorWithIsSymbolic strides_;
   c10::SymInt storage_offset_;
   c10::SymInt numel_;
   bool has_symbolic_sizes_strides_;

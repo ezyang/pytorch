@@ -251,8 +251,9 @@ using bool_is_non_overlapping_and_dense =
     strong_bool<struct bool_is_non_overlapping_and_dense_>;
 
 struct C10_API ExtraMeta {
-  SymDimVector sizes_ = {0};
-  SymDimVector strides_ = {1};
+  // NB: could pack the inner bools with the other bools to save two words
+  SymDimVectorWithIsSymbolic sizes_ = {0};
+  SymDimVectorWithIsSymbolic strides_ = {1};
   SymInt numel_ = 1;
   SymInt storage_offset_ = 0;
   // TODO: make these all SymBool
@@ -267,8 +268,8 @@ struct C10_API ExtraMeta {
   ExtraMeta() {}
 
   ExtraMeta(
-      SymDimVector sizes,
-      SymDimVector strides,
+      SymDimVectorWithIsSymbolic sizes,
+      SymDimVectorWithIsSymbolic strides,
       SymInt numel,
       SymInt storage_offset,
       bool_is_contiguous is_contiguous,

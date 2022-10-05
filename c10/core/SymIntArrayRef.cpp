@@ -13,13 +13,13 @@ at::IntArrayRef asIntArrayRefSlow(c10::SymIntArrayRef ar) {
 }
 
 c10::optional<at::IntArrayRef> asIntArrayRefSlowOpt(c10::SymIntArrayRef ar) {
-  if (ar.any_symbolic())
+  if (ar.is_symbolic())
     return c10::nullopt;
   return {asIntArrayRefUnchecked(ar)};
 }
 
 at::IntArrayRef asIntArrayRefUnchecked(c10::SymIntArrayRef ar) {
-  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(!ar.any_symbolic());
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(!ar.is_symbolic());
   return IntArrayRef(reinterpret_cast<const int64_t*>(ar.data()), ar.size());
 }
 

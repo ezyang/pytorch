@@ -40,21 +40,26 @@ using MetadataShape = c10::variant<SymIntSmallVec, at::Tensor>;
 struct InputMetadata {
   InputMetadata() = default;
 
+private:
   InputMetadata(
       const at::TensorOptions options,
       MetadataShape input_shape,
+      bool is_symbolic,
       bool is_tensor_subclass)
       : options_{options},
-        shape_{input_shape},
+        shape_(std::move(input_shape)),
+        is_symbolic_(is_symbolic),
         is_tensor_subclass_{is_tensor_subclass} {
     auto device_ = options.device();
     stream_ = c10::impl::getDeviceGuardImpl(device_.type())->getStream(device_);
   }
 
+public:
   InputMetadata(const at::Tensor& t)
       : InputMetadata(
             t.options(),
             compute_variant_shape(t),
+            t.unsafeGetTensorImpl()->has_symbolic_sizes_strides(),
             t.unsafeGetTensorImpl()->is_python_dispatch()) {}
 
   const at::TensorOptions options() const {
@@ -150,7 +155,7 @@ struct InputMetadata {
 
   c10::SymIntArrayRef shape_as_dim_vector() const {
     const auto& dim_shape = c10::get<SymIntSmallVec>(shape_);
-    return c10::SymIntArrayRef(dim_shape.data(), dim_shape.size());
+    return c10::SymIntArrayRef(c10::SymIntArrayRef::UNCHECKED, dim_shape.data(), dim_shape.size(), is_symbolic_);
   }
 
   at::Tensor shape_as_tensor() const {
@@ -159,6 +164,7 @@ struct InputMetadata {
 
   const at::TensorOptions options_;
   MetadataShape shape_;
+  bool is_symbolic_;
   c10::Stream stream_ = c10::Stream(c10::Stream::Default::DEFAULT, device());
   bool is_tensor_subclass_ = false;
 };

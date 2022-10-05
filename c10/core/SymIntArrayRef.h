@@ -26,6 +26,7 @@ class ArrayRef<SymInt> final {
   using reverse_iterator = std::reverse_iterator<iterator>;
 
   enum Unchecked { UNCHECKED };
+  enum Slow { SLOW };
 
  private:
   /// The start of the array, in an external buffer.
@@ -35,7 +36,7 @@ class ArrayRef<SymInt> final {
   size_type Length;
 
   /// A bool saying if any element is symbolic
-  bool AnySymbolic;
+  bool IsSymbolic;
 
   void debugCheckNullptrInvariant() {
     TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
@@ -43,11 +44,11 @@ class ArrayRef<SymInt> final {
         "created ArrayRef with nullptr and non-zero length! c10::optional relies on this being illegal");
   }
 
-  void debugCheckAnySymbolicInvariant() {
+  void debugCheckIsSymbolicInvariant() {
     TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
-        AnySymbolic == computeSymbolic(),
-        "created SymIntArrayRef with incorrect AnySymbolic tag; real tag is ",
-        !AnySymbolic);
+        IsSymbolic == computeSymbolic(),
+        "created SymIntArrayRef with incorrect IsSymbolic tag; real tag is ",
+        !IsSymbolic);
   }
 
   bool computeSymbolic() const {
@@ -64,29 +65,35 @@ class ArrayRef<SymInt> final {
 
   /// Construct an empty ArrayRef.
   /* implicit */ constexpr ArrayRef()
-      : Data(nullptr), Length(0), AnySymbolic(false) {}
+      : Data(nullptr), Length(0), IsSymbolic(false) {}
 
   /// Construct an ArrayRef from a single element.
   ArrayRef(const T& OneElt)
-      : Data(&OneElt), Length(1), AnySymbolic(OneElt.is_symbolic()) {}
+      : Data(&OneElt), Length(1), IsSymbolic(OneElt.is_symbolic()) {}
 
   /// Construct an ArrayRef from a pointer and length.
-  ArrayRef(const T* data, size_t length)
-      : Data(data), Length(length), AnySymbolic(computeSymbolic()) {
+  ArrayRef(Slow, const T* data, size_t length)
+      : Data(data), Length(length), IsSymbolic(computeSymbolic()) {
     debugCheckNullptrInvariant();
+  }
+
+  ArrayRef(Unchecked, const T* data, size_t length, bool is_symbolic)
+      : Data(data), Length(length), IsSymbolic(is_symbolic) {
+    debugCheckNullptrInvariant();
+    debugCheckIsSymbolicInvariant();
   }
 
   ArrayRef(Unchecked, const int64_t* data, size_t length)
       : Data(reinterpret_cast<const c10::SymInt*>(data)),
         Length(length),
-        AnySymbolic(false) {
+        IsSymbolic(false) {
     debugCheckNullptrInvariant();
-    debugCheckAnySymbolicInvariant();
+    debugCheckIsSymbolicInvariant();
   }
 
   /// Construct an ArrayRef from a range.
-  ArrayRef(const T* begin, const T* end)
-      : Data(begin), Length(end - begin), AnySymbolic(computeSymbolic()) {
+  ArrayRef(Slow, const T* begin, const T* end)
+      : Data(begin), Length(end - begin), IsSymbolic(computeSymbolic()) {
     debugCheckNullptrInvariant();
   }
 
@@ -94,8 +101,8 @@ class ArrayRef<SymInt> final {
   /// avoid instantiating SmallVectorTemplateCommon<T> whenever we
   /// copy-construct an ArrayRef.
   template <typename U>
-  /* implicit */ ArrayRef(const SmallVectorTemplateCommon<T, U>& Vec)
-      : Data(Vec.data()), Length(Vec.size()), AnySymbolic(computeSymbolic()) {
+  /* implicit */ ArrayRef(Slow, const SmallVectorTemplateCommon<T, U>& Vec)
+      : Data(Vec.data()), Length(Vec.size()), IsSymbolic(computeSymbolic()) {
     debugCheckNullptrInvariant();
   }
 
@@ -104,28 +111,36 @@ class ArrayRef<SymInt> final {
       typename = std::enable_if_t<std::is_same<
           std::remove_const_t<decltype(std::declval<Container>().data())>,
           T*>::value>>
-  /* implicit */ ArrayRef(const Container& container)
+  /* implicit */ ArrayRef(Slow, const Container& container)
       : Data(container.data()),
         Length(container.size()),
-        AnySymbolic(computeSymbolic()) {
+        IsSymbolic(computeSymbolic()) {
     debugCheckNullptrInvariant();
   }
 
   /// Construct an ArrayRef from a std::vector.
   template <typename A>
-  /* implicit */ ArrayRef(const std::vector<T, A>& Vec)
-      : Data(Vec.data()), Length(Vec.size()), AnySymbolic(computeSymbolic()) {
+  /* implicit */ ArrayRef(Slow, const std::vector<T, A>& Vec)
+      : Data(Vec.data()), Length(Vec.size()), IsSymbolic(computeSymbolic()) {
+  }
+
+  /// Construct an ArrayRef from a std::vector that definitely has
+  /// SymInt in it.
+  template <typename A>
+  /* implicit */ ArrayRef(Unchecked, const std::vector<T, A>& Vec, bool is_symbolic)
+      : Data(Vec.data()), Length(Vec.size()), IsSymbolic(is_symbolic) {
+    debugCheckIsSymbolicInvariant();
   }
 
   /// Construct an ArrayRef from a std::array
   template <size_t N>
   /* implicit */ ArrayRef(const std::array<T, N>& Arr)
-      : Data(Arr.data()), Length(N), AnySymbolic(computeSymbolic()) {}
+      : Data(Arr.data()), Length(N), IsSymbolic(computeSymbolic()) {}
 
   /// Construct an ArrayRef from a C array.
   template <size_t N>
   /* implicit */ ArrayRef(const T (&Arr)[N])
-      : Data(Arr), Length(N), AnySymbolic(computeSymbolic()) {}
+      : Data(Arr), Length(N), IsSymbolic(computeSymbolic()) {}
 
   /// Construct an ArrayRef from a std::initializer_list.
   /* implicit */ ArrayRef(const std::initializer_list<T>& Vec)
@@ -133,7 +148,7 @@ class ArrayRef<SymInt> final {
             std::begin(Vec) == std::end(Vec) ? static_cast<T*>(nullptr)
                                              : std::begin(Vec)),
         Length(Vec.size()),
-        AnySymbolic(computeSymbolic()) {}
+        IsSymbolic(computeSymbolic()) {}
 
   /// @}
   /// @name Simple Operations
@@ -204,9 +219,9 @@ class ArrayRef<SymInt> final {
         M,
         "; size = ",
         size());
-    if (AnySymbolic) {
+    if (IsSymbolic) {
       // Recompute the field
-      return ArrayRef<T>(data() + N, M);
+      return ArrayRef<T>(SLOW, data() + N, M);
     } else {
       // Definitely false
       return ArrayRef<T>(
@@ -253,8 +268,8 @@ class ArrayRef<SymInt> final {
   typename std::enable_if<std::is_same<U, T>::value, ArrayRef<T>>::type&
   operator=(std::initializer_list<U>) = delete;
 
-  C10_HOST_CONSTEXPR_EXCEPT_WIN_CUDA bool any_symbolic() const {
-    return AnySymbolic;
+  C10_HOST_CONSTEXPR_EXCEPT_WIN_CUDA bool is_symbolic() const {
+    return IsSymbolic;
   }
 
   /// @}

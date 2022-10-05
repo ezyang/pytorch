@@ -490,9 +490,10 @@ inline Tensor sum_to(
   return _sum_to(tensor, shape, always_return_non_view);
 }
 
-static inline bool is_expandable_to(
-    SymIntArrayRef shape,
-    c10::SymIntArrayRef desired) {
+template <typename T>
+inline bool _is_expandable_to(
+    ArrayRef<T> shape,
+    ArrayRef<T> desired) {
   size_t ndim = shape.size();
   size_t target_dim = desired.size();
   if (ndim > target_dim) {
@@ -508,12 +509,11 @@ static inline bool is_expandable_to(
   return true;
 }
 
-static inline bool is_expandable_to(IntArrayRef shape, IntArrayRef desired) {
-  auto sym_shape = c10::SymIntArrayRef(
-      reinterpret_cast<const c10::SymInt*>(shape.data()), shape.size());
-  auto sym_desired = c10::SymIntArrayRef(
-      reinterpret_cast<const c10::SymInt*>(desired.data()), desired.size());
-  return is_expandable_to(sym_shape, sym_desired);
+inline bool is_expandable_to(SymIntArrayRef shape, SymIntArrayRef desired) {
+  return _is_expandable_to(shape, desired);
+}
+inline bool is_expandable_to(IntArrayRef shape, IntArrayRef desired) {
+  return _is_expandable_to(shape, desired);
 }
 
 } // namespace at
