@@ -13,10 +13,21 @@
 namespace c10 {
 using SymIntArrayRef = ArrayRef<SymInt>;
 
-TORCH_API at::IntArrayRef asIntArrayRefSlow(c10::SymIntArrayRef ar);
-TORCH_API at::IntArrayRef asIntArrayRefUnchecked(c10::SymIntArrayRef ar);
-TORCH_API c10::optional<at::IntArrayRef> asIntArrayRefSlowOpt(
-    c10::SymIntArrayRef ar);
+inline at::IntArrayRef asIntArrayRefUnchecked(c10::SymIntArrayRef ar) {
+  return IntArrayRef(reinterpret_cast<const int64_t*>(ar.data()), ar.size());
+}
+
+inline c10::optional<at::IntArrayRef> asIntArrayRefSlowOpt(c10::SymIntArrayRef ar) {
+  return {asIntArrayRefUnchecked(ar)};
+}
+
+inline at::IntArrayRef asIntArrayRefSlow(c10::SymIntArrayRef ar) {
+  auto r = asIntArrayRefSlowOpt(ar);
+  TORCH_CHECK(
+      r.has_value(),
+      "SymIntArrayRef expected to contain only concrete integers");
+  return *r;
+}
 
 // Prefer using a more semantic constructor, like
 // fromIntArrayRefKnownNonNegative
