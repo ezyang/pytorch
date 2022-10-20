@@ -10,6 +10,7 @@ from torch._prims_common import (
     corresponding_real_dtype,
     elementwise_dtypes,
     ELEMENTWISE_TYPE_PROMOTION_KIND,
+    IntLike,
 )
 
 from torch._prims_common.wrappers import out_wrapper
@@ -390,24 +391,24 @@ def meta_conv(
         output_padding: Optional[Union[List[int], int]] = None,
     ):
         ret_shape = []
-        if isinstance(stride, int):
+        if isinstance(stride, IntLike):
             stride = [stride] * len(dims)
         elif len(stride) == 1:
             stride = [stride[0]] * len(dims)
 
-        if isinstance(padding, int):
+        if isinstance(padding, IntLike):
             padding = [padding] * len(dims)
         elif len(padding) == 1:
             padding = [padding[0]] * len(dims)
 
-        if isinstance(dilation, int):
+        if isinstance(dilation, IntLike):
             dilation = [dilation] * len(dims)
         elif len(dilation) == 1:
             dilation = [dilation[0]] * len(dims)
 
         output_padding_list: Optional[List[int]] = None
         if output_padding:
-            if isinstance(output_padding, int):
+            if isinstance(output_padding, IntLike):
                 output_padding_list = [output_padding] * len(dims)
             elif len(output_padding) == 1:
                 output_padding_list = [output_padding[0]] * len(dims)
