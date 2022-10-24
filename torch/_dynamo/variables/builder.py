@@ -514,6 +514,7 @@ class VariableBuilder:
                         source=None,
                         # Guards are added inside register_attr_or_module
                     )
+
                 tensor_variable = TensorVariable.create(
                     tx=self.tx,
                     proxy=self.tx.output.create_graph_input(
