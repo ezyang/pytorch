@@ -135,8 +135,17 @@ def setup_stacktrace_preservation_hooks(roots: List):
 
 def create_joint_forward_backward(fn):
     def joint_forward_backward(
-        primals: List[Any], tangents: List[Any]
+        orig_primals: List[Any], orig_tangents: List[Any]
     ) -> Tuple[List[Any], List[Any]]:
+        primals = []
+        for orig_p in orig_primals:
+            if isinstance(orig_p, Tensor):
+                p = torch._to_functional_tensor(orig_p)
+                p.requires_grad = orig_p.requires_grad
+            else:
+                p = orig_p
+            primals.append(p)
+
         # Call the forward pass
         outs = fn(*primals)
         # Get the inputs that need gradients
@@ -149,6 +158,8 @@ def create_joint_forward_backward(fn):
                 grad_primals.append(p)
 
         # Get the outputs that need gradients
+        tangents = [torch._to_functional_tensor(orig_t) for orig_t in orig_tangents]
+
         assert len(tangents) == len(outs)
         needed_outs = []
         needed_tangents = []
@@ -170,9 +181,19 @@ def create_joint_forward_backward(fn):
                     allow_unused=True,
                 )
         backward_out_iter = iter(backward_out)
-        return outs, [
-            next(backward_out_iter) if i else None for i in inputs_needs_grads
-        ]
+        grads = [next(backward_out_iter) if i else None for i in inputs_needs_grads]
+
+        # TODO: mutation
+        def defun(t):
+            if not isinstance(t, Tensor):
+                return t
+            torch._sync(t)
+            return torch._from_functional_tensor(t)
+
+        orig_outs = [defun(t) for t in outs]
+        orig_grads = [defun(t) for t in grads]
+
+        return orig_outs, orig_grads
 
     return joint_forward_backward
 
@@ -391,24 +412,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
     disable_amp = torch._C._is_any_autocast_enabled()
 
     if config.use_functionalize:
-        # Trace once without decompositions, into a graph of ATen ops.
-        # NB: tracing_mode is real, as it's assumed the calling context setup
-        # fake tensor mode / symbolic shapes if that is needed
-        fx_g = make_fx(joint_forward_backward)(*joint_inputs)
-
-        context = disable_autocast_manager if disable_amp else nullcontext
-
-        def fake_fn(primals, tangents):
-            with torch.fx.traceback.override_stack_trace():
-                return torch.fx.Interpreter(fx_g).run(primals, tangents)
-
-        # Trace a second time, running functionalization, and THEN running decompositions.
-        # functionalization only acts on ATen today, and doesn't currently handle
-        # view and inplace ops that come from primtorch.
-        # Eventually, functionalization should support primtorch view/inplace ops,
-        # which will make it ok to run decompositions before functionalization.
-        with context():
-            fx_g = make_fx(functionalize(fake_fn), aot_config.decompositions)(*joint_inputs)
+        fx_g = make_fx(joint_forward_backward, aot_config.decompositions)(*joint_inputs)
         fx_g.graph.eliminate_dead_code()
         fx_g.recompile()
     else:
