@@ -317,14 +317,14 @@ std::vector<Shape> compute_shape_convolution(
     auto expanded_output_padding =
         expand_param_if_needed(output_padding, "output_padding", dim);
     auto out_shape = at::native::conv_input_size(
-        input.sizes(),
-        weight.sizes(),
-        expanded_padding,
-        expanded_output_padding,
+        input.sym_sizes(),
+        weight.sym_sizes(),
+        c10::fromIntArrayRefSlow(expanded_padding),
+        c10::fromIntArrayRefSlow(expanded_output_padding),
         expanded_stride,
         expanded_dilation,
         groups);
-    return {Shape(input.scalar_type(), out_shape)};
+    return {Shape(input.scalar_type(), c10::asIntArrayRefSlow(out_shape).vec())};
   }
 }
 
