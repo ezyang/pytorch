@@ -821,7 +821,21 @@ class TestSymbolicTracing(TestCase):
         test_inputs.append([(1, 5), (3, 1)])
         test_inputs.append([(1, 4), (4, 1)])
         shape_env = self._test_dynamic(f, [(1, 2), (3, 1)], test_inputs)
-        assert len(shape_env.guards) == 0
+        # a s0 s1 s2 s3 s4
+        # b s5 s6 s7 s8 s9
+        self.assertExpectedInline("\n".join(str(g) for g, _ in shape_env.guards), """\
+Eq(1, s0)
+Eq(s1, s2)
+Eq(1, s3)
+Eq(s3, 1)
+Eq(s2, s1)
+False
+Eq(1, s6)
+Eq(1, s7)
+Eq(1, s8)
+Eq(s7, 1)
+Eq(s8, 1)
+False""")
 
     def test_multiply_shape(self):
         def f(a):
