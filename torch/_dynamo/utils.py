@@ -753,9 +753,9 @@ try:
         else:
             return e
 
-    def wrap_to_fake_tensor_and_record(e, tx):
+    def wrap_to_fake_tensor_and_record(e, tx, static_shapes=False):
         if type(e) in (torch.Tensor, torch.nn.Parameter):
-            static_shapes = config.dynamic_shapes is False
+            static_shapes = static_shapes or config.dynamic_shapes is False
             if type(e) is torch.nn.Parameter:
                 # Always static for params
                 static_shapes = True
