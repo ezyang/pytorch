@@ -33,10 +33,12 @@ void PyAnomalyMetadata::store_stack() {
 
 void PyAnomalyMetadata::print_stack(const std::string& current_node_name) {
   pybind11::gil_scoped_acquire gil;
+  std::cerr << "apple\n";
   if (!PyDict_Check(dict())) {
     throw std::runtime_error("Anomaly metadata is not a python dictionary.");
   }
   PyObject* trace_stack = PyDict_GetItemString(dict(), ANOMALY_TRACE_KEY);
+  std::cerr << "banana\n";
   _print_stack(trace_stack, current_node_name, false);
   PyObject* pyparent(PyDict_GetItemString(dict(), ANOMALY_PARENT_KEY));
 
@@ -89,6 +91,7 @@ void _print_stack(
     const std::string& current_node_name,
     bool is_parent) {
   if (!stack) {
+    std::cerr << "carrot\n";
     TORCH_WARN(
         "Error detected in ",
         current_node_name,
@@ -97,6 +100,8 @@ void _print_stack(
         "during forward pass for more information.");
     return;
   }
+
+  std::cerr << "printing stack\n";
 
   THPObjectPtr empty_string(PyUnicode_FromString(""));
   if (!empty_string) {
@@ -111,14 +116,14 @@ void _print_stack(
   }
 
   if (!is_parent) {
-    TORCH_WARN(
+    TORCH_WARN(0,
         "Error detected in ",
         current_node_name,
         ". ",
         "Traceback of forward call that caused the error:\n",
         THPUtils_unpackString(msg.get()));
   } else {
-    TORCH_WARN(
+    TORCH_WARN(0,
         "\n\n",
         "Previous calculation was induced by ",
         current_node_name,

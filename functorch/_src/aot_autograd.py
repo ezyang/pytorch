@@ -29,6 +29,9 @@ from . import config
 from .named_members_polyfill import _named_buffers, _named_parameters
 from .partitioners import default_partition
 
+C = torch.autograd.detect_anomaly(check_nan=False)
+C.__enter__()
+
 MutationType = Enum("MutationType", ("none", "metadata_only", "data"))
 OutputType = Enum("OutputType", ("non_alias", "alias_of_input", "alias_of_intermediate"))
 
@@ -239,7 +242,7 @@ def gen_alias_from_base(aliased_base_tensor, size, stride, storage_offset, targe
 def run_functionalized_fw_and_collect_metadata(f):
     def to_fun(t):
         if isinstance(t, Tensor):
-            return torch._to_functional_tensor(t, mirror_autograd_meta=True)
+            return torch._to_functional_tensor(t, mirror_autograd_meta="ErrorFwd")
         else:
             return t
 
@@ -626,6 +629,11 @@ def create_joint_forward_backward_functionalized(
     def joint_forward_backward(
         primals: List[Any], tangents: List[Any]
     ) -> Tuple[List[Any], List[Any]]:
+        return joint_forward_backward_inner(primals, tangents)
+
+    def joint_forward_backward_inner(
+        primals: List[Any], tangents: List[Any]
+    ) -> Tuple[List[Any], List[Any]]:
         # Call the forward pass, making sure to clone any inputs that are mutated first.
         # We need to ensure that the inputs we pass to autograd.grad() are the *original*
         # inputs, and not their mutated values.
@@ -703,7 +711,21 @@ def create_joint_forward_backward_functionalized(
         backward_out = []
         # Call the backwards pass
         if grad_primals:
-            with fx_traceback.override_stack_trace():
+            with fx_traceback.override_stack_trace(), torch.autograd.set_multithreading_enabled(False):
+                """
+                with open('foo.dot', 'w') as f:
+                    from torchviz import make_dot
+                    import sys
+                    sys.setrecursionlimit(10**6)
+                    f.write(str(make_dot(tuple(needed_outs) + tuple(grad_primals), show_saved=True, show_attrs=True)))
+                    print("wrote dot")
+                """
+                def readout(x):
+                    nodes = torch._C._current_graph_task_execution_order()
+                    for n in nodes:
+                        print(type(n).__name__)
+                    return x
+                needed_outs[0].register_hook(readout)
                 backward_out = torch.autograd.grad(
                     needed_outs,
                     grad_primals,
@@ -718,7 +740,7 @@ def create_joint_forward_backward_functionalized(
 
     def to_fun(t):
         if isinstance(t, Tensor):
-            return torch._to_functional_tensor(t, mirror_autograd_meta=True)
+            return torch._to_functional_tensor(t, mirror_autograd_meta="ErrorJoint")
         else:
             return t
 

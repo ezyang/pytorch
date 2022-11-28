@@ -37,6 +37,7 @@ void Node::assign_parent() {
 }
 
 auto Node::name() const -> std::string {
+  if (!debug_name_.empty()) return debug_name_;
   return c10::demangle(typeid(*this).name());
 }
 

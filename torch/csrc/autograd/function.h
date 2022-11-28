@@ -549,6 +549,12 @@ struct TORCH_API Node : std::enable_shared_from_this<Node> {
   // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   uint64_t thread_id_ = 0;
 
+  std::string debug_name_;
+
+public:
+  void set_debug_name(std::string debug_name) { debug_name_ = std::move(debug_name); }
+protected:
+
   // Note [Thread Safety on Autograd Node]
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   // Autograd Engine let the owning thread which calls Engine::execute to drive

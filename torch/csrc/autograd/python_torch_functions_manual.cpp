@@ -408,15 +408,15 @@ static PyObject* THPVariable__to_functional_tensor(
     PyObject* kwargs) {
   HANDLE_TH_ERRORS
   static PythonArgParser parser(
-      {"_to_functional_tensor(Tensor t, *, bool mirror_autograd_meta=False)"},
+      {"_to_functional_tensor(Tensor t, *, std::string mirror_autograd_meta='')"},
       /*traceable=*/true);
 
   ParsedArgs<2> parsed_args;
   auto r = parser.parse(args, kwargs, parsed_args);
   auto self_ = r.tensor(0);
-  auto mirror_autograd_meta = r.toBool(1);
+  auto mirror_autograd_meta = r.string(1);
   auto wrapped = at::functionalization::impl::to_functional_tensor(self_);
-  if (mirror_autograd_meta) {
+  if (!mirror_autograd_meta.empty()) {
     // Here, we unsafely set the grad function on the wrapper to be the same as
     // the inner. We expect this grad_fn to NEVER be used. It's needed so that
     // .is_leaf metadata is accurate on the wrapper
@@ -428,6 +428,7 @@ static PyObject* THPVariable__to_functional_tensor(
             new torch::autograd::Error(
                 "Cannot backprop through mirrored meta, file a bug in PyTorch"),
             torch::autograd::deleteNode);
+        new_grad_fn->set_debug_name(mirror_autograd_meta);
         torch::autograd::set_history(wrapped, new_grad_fn);
       }
     }
