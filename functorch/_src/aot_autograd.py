@@ -713,25 +713,26 @@ def create_joint_forward_backward_functionalized(
         if grad_primals:
             with fx_traceback.override_stack_trace(), torch.autograd.set_multithreading_enabled(False):
                 """
-                with open('foo.dot', 'w') as f:
-                    from torchviz import make_dot
-                    import sys
-                    sys.setrecursionlimit(10**6)
-                    f.write(str(make_dot(tuple(needed_outs) + tuple(grad_primals), show_saved=True, show_attrs=True)))
-                    print("wrote dot")
-                """
                 def readout(x):
                     nodes = torch._C._current_graph_task_execution_order()
                     for n in nodes:
                         print(type(n).__name__)
                     return x
                 needed_outs[0].register_hook(readout)
+                """
                 backward_out = torch.autograd.grad(
                     needed_outs,
                     grad_primals,
                     grad_outputs=needed_tangents,
                     allow_unused=True,
+                    retain_graph=True,
                 )
+                with open('foo.dot', 'w') as f:
+                    from torchviz import make_dot
+                    import sys
+                    sys.setrecursionlimit(10**6)
+                    f.write(str(make_dot(tuple(needed_outs) + tuple(grad_primals), show_saved=True, show_attrs=True)))
+                    print("wrote dot")
         backward_out_iter = iter(backward_out)
         all_fw_outs = mutated_inputs_and_outs_to_grad + output_metadata_for_fw
         return all_fw_outs, [
