@@ -75,5 +75,9 @@ void AnomalyMetadata::assign_parent(const std::shared_ptr<Node>& parent_node) {
   parent_ = parent_node;
 }
 
+void AnomalyMetadata::mark_error() {
+  failed_ = true;
+}
+
 } // namespace autograd
 } // namespace torch

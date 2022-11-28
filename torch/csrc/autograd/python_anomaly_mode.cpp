@@ -133,5 +133,12 @@ void _print_stack(
   }
 }
 
+void PyAnomalyMetadata::mark_error() {
+  pybind11::gil_scoped_acquire gil;
+  if (PyDict_SetItemString(dict(), ANOMALY_FAILURE_KEY, Py_True)) {
+    throw python_error();
+  }
+}
+
 } // namespace autograd
 } // namespace torch

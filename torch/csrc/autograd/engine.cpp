@@ -730,6 +730,7 @@ void GraphTask::set_exception_without_signal(const std::shared_ptr<Node>& fn) {
     }
     if (AnomalyMode::is_enabled() && fn) {
       std::cerr << "anomaly mode is printing\n";
+      fn->metadata()->mark_error();
       fn->metadata()->print_stack(fn->name());
     }
   }

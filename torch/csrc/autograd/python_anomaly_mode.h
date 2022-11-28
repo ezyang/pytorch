@@ -14,6 +14,8 @@ struct PyAnomalyMetadata : public AnomalyMetadata {
   static constexpr const char* ANOMALY_TRACE_KEY = "traceback_";
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-writable-strings)
   static constexpr const char* ANOMALY_PARENT_KEY = "parent_";
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-writable-strings)
+  static constexpr const char* ANOMALY_FAILURE_KEY = "failed_";
 
   PyAnomalyMetadata() {
     pybind11::gil_scoped_acquire gil;
@@ -29,6 +31,7 @@ struct PyAnomalyMetadata : public AnomalyMetadata {
   void store_stack() override;
   void print_stack(const std::string& current_node_name) override;
   void assign_parent(const std::shared_ptr<Node>& parent_node) override;
+  void mark_error() override;
 
   PyObject* dict() {
     return dict_;
