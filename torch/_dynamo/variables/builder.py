@@ -16,6 +16,7 @@ from functorch.experimental.ops import PyOperator
 
 import torch
 from torch.fx.immutable_collections import immutable_list
+from torch._subclasses.fake_tensor import FakeTensor
 
 from .. import config, mutation_guard, replay_record, skipfiles
 from ..allowed_functions import is_allowed, is_builtin_callable, is_numpy
@@ -591,6 +592,7 @@ class VariableBuilder:
             guards=self.make_guards(GuardBuilder.TENSOR_MATCH),
             should_specialize=self.tensor_should_specialize(),
             ignore_subclass=ignore_subclass,
+            source=self.get_source(),
         )
 
         self.tx.output.graphargs.append(GraphArg(self.get_source(), value, False))
@@ -614,10 +616,11 @@ class VariableBuilder:
         if self.name in self.tx.output.unspec_variable_map:
             return self.tx.output.unspec_variable_map[self.name]
         else:
-            if config.dynamic_shapes and isinstance(value, int):
+            if config.dynamic_shapes and isinstance(value, int) and not is_constant_source(self.get_source()):
+                # NB: we MUST register this as a GraphArg
                 shape_env = self.tx.output.shape_env
                 wrapped_value = shape_env.create_symintnode(
-                    shape_env.create_symbol(value)
+                    shape_env.create_symbol(value, sname=self.source.name)
                 )
                 # TODO: Do float
             else:
@@ -718,7 +721,11 @@ def wrap_fx_proxy_cls(
         if example_value is None:
             example_value = get_fake_value(proxy.node, tx)
 
-        else:
+        # Handle recursive calls here
+        elif isinstance(example_value, FakeTensor):
+            pass
+
+        elif isinstance(example_value, torch.Tensor):
             # We shouldn't be doing this at all, see
             # https://github.com/pytorch/torchdynamo/issues/1950
             # But assuming we're doing it, the legacy behavior for
@@ -731,8 +738,15 @@ def wrap_fx_proxy_cls(
             # take the returned TensorVariable and wrap it into a more
             # accurate TensorVariable that is able to track subclass-ness;
             # otherwise this is wrong!
+            kwargs =  { 'ignore_subclass': ignore_subclass}
+            assert "source" in options
+            if options["source"] is None:
+                kwargs['static_shapes'] = True
+                kwargs['sname'] = "__constant_illegal_sname"
+            else:
+                kwargs['sname'] = options["source"].name()
             example_value = wrap_to_fake_tensor_and_record(
-                example_value, tx=tx, ignore_subclass=ignore_subclass
+                example_value, tx=tx, **kwargs
             )
 
     if isinstance(example_value, torch.Tensor):
