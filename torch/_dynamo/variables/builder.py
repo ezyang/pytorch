@@ -580,7 +580,7 @@ class VariableBuilder:
             # a later point in time.
             ignore_subclass = True
         else:
-            assert type(value) in (torch.Tensor, torch.nn.Parameter)
+            assert type(value) in (torch.Tensor, torch.nn.Parameter), str(type(value))
             ignore_subclass = False
 
         tensor_variable = wrap_fx_proxy(

@@ -1459,6 +1459,7 @@ class ExportTests(torch._dynamo.test_case.TestCase):
 
         exported = torch._dynamo.export(mod.forward, pred, x)
         out_graph = exported[0]
+        out_graph.print_readable()
 
         dynamo_result = out_graph(pred, x)
         self.assertTrue(torch._dynamo.utils.same(real_result, dynamo_result))
