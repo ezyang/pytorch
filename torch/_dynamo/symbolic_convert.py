@@ -12,7 +12,7 @@ import traceback
 import types
 import typing
 import weakref
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
 from unittest.mock import patch
 
 import torch
@@ -105,16 +105,15 @@ class BlockStackEntry:
         return self.with_context.exit(tx)
 
 
-InstructionTranslatorGraphState = Tuple[
-    OutputGraphState,
-    Dict[str, VariableTracker],
-    List[VariableTracker],
-    List[BlockStackEntry],
-    Optional[int],
-    Instruction,
-    Optional[Instruction],
-    int,
-]
+class InstructionTranslatorGraphState(NamedTuple):
+    output: OutputGraphState
+    symbolic_locals: Dict[str, VariableTracker]
+    stack: List[VariableTracker]
+    block_stack: List[BlockStackEntry]
+    instruction_pointer: Optional[int]
+    current_instruction: Instruction
+    next_instruction: Optional[Instruction]
+    lineno: int
 
 
 def stack_op(fn: typing.Callable[..., object]):
@@ -1435,7 +1434,7 @@ class InstructionTranslatorBase(object):
 
     def copy_graphstate(self) -> InstructionTranslatorGraphState:
         """Create a checkpoint of the current state by copying everything"""
-        return (
+        return InstructionTranslatorGraphState(
             self.output.copy_graphstate(),
             collections.OrderedDict(self.symbolic_locals),
             list(self.stack),
@@ -1446,7 +1445,7 @@ class InstructionTranslatorBase(object):
             self.lineno,
         )
 
-    def restore_graphstate(self, state):
+    def restore_graphstate(self, state: InstructionTranslatorGraphState):
         """Restore a checkpoint created by self.copy_graphstate()"""
         (
             output_state,
