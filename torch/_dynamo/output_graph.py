@@ -77,6 +77,12 @@ class OutputGraphState(NamedTuple):
 
     def diff(self, other: "OutputGraphState", *, prefix: str = "") -> Optional[str]:
         for k in self._fields:
+            if k == "side_effects":
+                r = self.side_effects.diff(other.side_effects)
+                if r is not None:
+                    return r
+                continue
+
             sv = getattr(self, k)
             ov = getattr(other, k)
             if sv != ov:

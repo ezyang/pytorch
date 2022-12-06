@@ -635,67 +635,20 @@ class TorchPyOperator(VariableTracker):
 
         assert kwargs is None or len(kwargs) == 0, "kwargs are not supported, yet"
 
-        def unwrap_real(arg):
-            if isinstance(arg, TensorVariable):
-                return arg.get_real_value()
-            if isinstance(arg, UserFunctionVariable):
-                return arg.fn
-            if isinstance(arg, NNModuleVariable):
-                return tx.output.get_submodule(arg.module_key)
-            if arg.has_unpack_var_sequence(tx):
-                return [
-                    unwrap_real(arg_inner) for arg_inner in arg.unpack_var_sequence(tx)
-                ]
-            return arg
-
-        def make_attr(name, proxy_args=None):
+        def make_attr(name):
             node = tx.output.create_proxy(
                 "get_attr",
                 name,
-                tuple(proxy_args) if proxy_args else tuple(),
+                (),
                 {},
             )
             return node
 
-        # Get values
-        u_args = [unwrap_real(arg) for arg in args]
-
-        def unwrap_proxy(arg):
-            try:
-                if isinstance(arg, TensorVariable):
-                    return arg.as_proxy()
-                if isinstance(arg, NNModuleVariable):
-                    name = arg.module_key
-                    mod = unwrap_real(arg)
-                    options = VariableTracker.propagate(self, args, kwargs.values())
-                    tx.output.register_attr_or_module(
-                        mod,
-                        name,
-                        name,
-                        source=NNModuleSource(
-                            GetItemSource(self.source, arg.module_key)
-                        ),
-                        **options,
-                    )
-                    return make_attr(name)
-                if arg.has_unpack_var_sequence(tx):
-                    return [
-                        unwrap_proxy(arg_inner)
-                        for arg_inner in arg.unpack_var_sequence(tx)
-                    ]
-                return arg.as_proxy()
-            except NotImplementedError:
-                return arg
-
-        def register_as_subgraph(fn, name, args):
-            from .. import export
-
-            gm, guards = export(fn, *args)
-
+        def add_subgraph(name, gm):
             next_name = None
             i = 0
             while not next_name:
-                candidate = f"name_{i}"
+                candidate = f"cond_{name}_{i}"
                 if candidate in tx.output.nn_modules:
                     i += 1
                 else:
@@ -705,23 +658,18 @@ class TorchPyOperator(VariableTracker):
             src = NNModuleSource(GetItemSource(self.source, next_name))
             gm.torchdynamo_force_dynamic = False
             tx.output.register_attr_or_module(gm, next_name, source=src)
-            return next_name, gm, guards
+            return next_name
 
-        # Get args as proxies
-        p_args = [unwrap_proxy(arg) for arg in args]
         if self.value.__name__ == "cond":
             # TODO(voz): Support fake tensor dispatch for recursive
             # ops - see torch/dispatch/_dispatcher.py
             from .. import config
 
-            assert len(p_args) == 4
+            assert len(args) == 4
             assert type(args[0]) is TensorVariable  # predicate
-            assert type(p_args[1]) is UserFunctionVariable  # true_fn
-            assert type(p_args[2]) is UserFunctionVariable  # false_fn
+            assert type(args[1]) is UserFunctionVariable  # true_fn
+            assert type(args[2]) is UserFunctionVariable  # false_fn
             assert type(args[3]) is ListVariable  # args
-
-            node_args = [unwrap_real(x) for x in args[3].unpack_var_sequence(tx)]
-            proxy_args = [unwrap_proxy(x) for x in args[3].unpack_var_sequence(tx)]
 
             # Our strategy for tracing the true/false branches of cond
             # are to checkpoint our graphstate, run the true branch,
@@ -736,22 +684,6 @@ class TorchPyOperator(VariableTracker):
             # would be difficult to implement, because of the path
             # explosion problem.
 
-            # To simplify implementation, we also assert that there must
-            # be no pending side effects.  This could cause problems for
-            # models that have internal side effects that don't escape;
-            # if you need this, we will need a more complicated
-            # implementation that can reason about not adding *new* side
-            # effects (on top of the old ones).
-            if not tx.output.side_effects.is_empty():
-                unimplemented(
-                    "Handling a cond operator when there are outstanding "
-                    "side effects in the trace is not currently supported.  "
-                    "Please file a bug to PyTorch requesting this functionality.  "
-                    "You may be able to unblock by removing side effects (e.g., "
-                    "mutating Python variables/data structures/etc) from your "
-                    "model."
-                )
-
             graph_checkpoint, checkpoint = tx.output.graph, tx.copy_graphstate()
 
             sub_args = args[3].unpack_var_sequence(tx)
@@ -761,6 +693,12 @@ class TorchPyOperator(VariableTracker):
                 tx.output.graph = torch.fx.Graph()
                 tx.output.graphargs = []
                 tx.output.name_to_input.clear()
+                # TODO: This is not entirely right if the user code
+                # inside the condition accesses a module; we need
+                # to distinguish between fresh modules and predefined
+                # modules? Or maybe it's fine if they show up multiple
+                # times
+                tx.output.nn_modules = {}
 
                 # One argument to graph per sub_args
                 for a in sub_args:
@@ -772,7 +710,7 @@ class TorchPyOperator(VariableTracker):
                 # NB: 0 is predicate
                 ix = 1 if branch else 2
 
-                output = p_args[ix].call_function(tx, sub_args, {})
+                output = args[ix].call_function(tx, sub_args, {})
 
                 # Register output to graph
                 # Modeled off of compile_and_call_fx_graph
@@ -783,22 +721,17 @@ class TorchPyOperator(VariableTracker):
                     "output", "output", (tx.output.create_arg((output.as_proxy(),))), {}
                 )
 
+                tx.output.side_effects.prune_dead_object_new(tx)
                 state = tx.copy_graphstate()
-                if not state.output.side_effects.is_empty():
-                    unimplemented(f"cond {branch} branch had side effects")
 
-                # TODO: In principle, nn_modules could also be merged, since
-                # this just tracks NN module access
                 guards = state.output.guards
+                nn_modules = state.output.nn_modules
 
                 # Nub out bits of state that we don't require to be
                 # equal
                 comparable_state = state._replace(output=state.output._replace(
                     guards=set(),
-                    # NB: The choice of object doesn't really matter,
-                    # just need to same SideEffects object so equality
-                    # test works
-                    side_effects=checkpoint.output.side_effects,
+                    nn_modules=None,
                     # Timestamp is monotonically increasing so we don't
                     # care about divergence
                     timestamp=0,
@@ -811,10 +744,10 @@ class TorchPyOperator(VariableTracker):
                 tx.output.graph = graph_checkpoint
                 tx.restore_graphstate(checkpoint)
 
-                return output, graph, guards, comparable_state
+                return output, graph, guards, nn_modules, comparable_state
 
-            true_r, true_graph, true_guards, true_cmp = speculate_branch(True)
-            false_r, false_graph, false_guards, false_cmp = speculate_branch(False)
+            true_r, true_graph, true_guards, true_nn_modules, true_cmp = speculate_branch(True)
+            false_r, false_graph, false_guards, false_nn_modules, false_cmp = speculate_branch(False)
 
             if true_cmp != false_cmp:
                 unimplemented(true_cmp.diff(false_cmp))
@@ -823,17 +756,21 @@ class TorchPyOperator(VariableTracker):
             tx.output.guards |= false_guards
             tx.output.guards |= true_guards
 
-            true_name, true_graph, true_guards = register_as_subgraph(
-                p_args[1].get_function(), "true", node_args
-            )
-            false_name, false_graph, false_guards = register_as_subgraph(
-                p_args[2].get_function(), "false", node_args
-            )
+            true_name = add_subgraph("true", torch.fx.GraphModule(true_nn_modules, true_graph))
+            false_name = add_subgraph("false", torch.fx.GraphModule(false_nn_modules, false_graph))
 
-            true_node = make_attr(true_name, proxy_args)
-            false_node = make_attr(false_name, proxy_args)
-            p_args[1] = true_node
-            p_args[2] = false_node
+            # Apply side effects (guaranteed to be equal)
+            tx.output.side_effects = true_cmp.output.side_effects
+
+            true_node = make_attr(true_name)
+            false_node = make_attr(false_name)
+
+            p_args = (args[0].as_proxy(), true_node, false_node, tuple(a.as_proxy() for a in sub_args))
+            # TODO: assert that the true/false return values are
+            # consistent
+            example_value = true_r.as_proxy().node.meta["example_value"]
+        else:
+            unimplemented(f"PyOperator {self.value.__name__}")
 
         # Store the invocation as a call
         return wrap_fx_proxy(
@@ -845,5 +782,5 @@ class TorchPyOperator(VariableTracker):
                 kwargs={},
                 current_tx=tx,
             ),
-            example_value=self.value(*u_args),
+            example_value=example_value,
         )
