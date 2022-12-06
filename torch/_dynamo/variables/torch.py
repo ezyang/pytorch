@@ -4,12 +4,14 @@ import math
 import re
 import types
 from typing import Dict, List
+from collections import OrderedDict
 
 import numpy
 
 import torch._C
 import torch.nn
 import torch.onnx.operators
+import torch.fx
 
 from .. import config, variables
 from ..allowed_functions import torch_get_name
@@ -720,17 +722,113 @@ class TorchPyOperator(VariableTracker):
 
             node_args = [unwrap_real(x) for x in args[3].unpack_var_sequence(tx)]
             proxy_args = [unwrap_proxy(x) for x in args[3].unpack_var_sequence(tx)]
+
+            # Our strategy for tracing the true/false branches of cond
+            # are to checkpoint our graphstate, run the true branch,
+            # roll it back to the checkpoint, and run the false
+            # branch, and then merge the graphstates.  Well, perhaps
+            # "merge" is too strong a word: we mostly assert that
+            # the resulting graphstates have to be the same.
+            #
+            # We only permit guards to diverge (we union the guards from
+            # both branches).  In particular, this means that side
+            # effects are NOT permitted inside true/false branches; this
+            # would be difficult to implement, because of the path
+            # explosion problem.
+
+            # To simplify implementation, we also assert that there must
+            # be no pending side effects.  This could cause problems for
+            # models that have internal side effects that don't escape;
+            # if you need this, we will need a more complicated
+            # implementation that can reason about not adding *new* side
+            # effects (on top of the old ones).
+            if not tx.output.side_effects.is_empty():
+                unimplemented(
+                    "Handling a cond operator when there are outstanding "
+                    "side effects in the trace is not currently supported.  "
+                    "Please file a bug to PyTorch requesting this functionality.  "
+                    "You may be able to unblock by removing side effects (e.g., "
+                    "mutating Python variables/data structures/etc) from your "
+                    "model."
+                )
+
+            graph_checkpoint, checkpoint = tx.output.graph, tx.copy_graphstate()
+
+            sub_args = args[3].unpack_var_sequence(tx)
+
+            def speculate_branch(branch):
+                # Setup the subgraph we're going to capture into
+                tx.output.graph = torch.fx.Graph()
+                tx.output.graphargs = []
+                tx.output.name_to_input.clear()
+
+                # One argument to graph per sub_args
+                for a in sub_args:
+                    assert isinstance(a, TensorVariable)
+                    tx.output.create_graph_input(a.as_proxy().node.name)
+                    # TODO: graphargs?  I think we end up not using
+                    # graphargs at all.  Not populated for now.
+
+                # NB: 0 is predicate
+                ix = 1 if branch else 2
+
+                output = p_args[ix].call_function(tx, sub_args, {})
+
+                # Register output to graph
+                # Modeled off of compile_and_call_fx_graph
+                # TODO: support non single Tensor output
+                assert isinstance(output, TensorVariable)
+                tx.output.guards.update(output.guards)
+                tx.output.create_node(
+                    "output", "output", (tx.output.create_arg((output.as_proxy(),))), {}
+                )
+
+                state = tx.copy_graphstate()
+                if not state.output.side_effects.is_empty():
+                    unimplemented(f"cond {branch} branch had side effects")
+
+                # TODO: In principle, nn_modules could also be merged, since
+                # this just tracks NN module access
+                guards = state.output.guards
+
+                # Nub out bits of state that we don't require to be
+                # equal
+                comparable_state = state._replace(output=state.output._replace(
+                    guards=set(),
+                    # NB: The choice of object doesn't really matter,
+                    # just need to same SideEffects object so equality
+                    # test works
+                    side_effects=checkpoint.output.side_effects,
+                    # Timestamp is monotonically increasing so we don't
+                    # care about divergence
+                    timestamp=0,
+                    # Meh (problem is the nodes don't compare equal;
+                    # maybe nub out outputs only)
+                    name_to_input=OrderedDict(),
+                ))
+
+                graph = tx.output.graph
+                tx.output.graph = graph_checkpoint
+                tx.restore_graphstate(checkpoint)
+
+                return output, graph, guards, comparable_state
+
+            true_r, true_graph, true_guards, true_cmp = speculate_branch(True)
+            false_r, false_graph, false_guards, false_cmp = speculate_branch(False)
+
+            if true_cmp != false_cmp:
+                unimplemented(true_cmp.diff(false_cmp))
+
+            # Add guards
+            tx.output.guards |= false_guards
+            tx.output.guards |= true_guards
+
             true_name, true_graph, true_guards = register_as_subgraph(
                 p_args[1].get_function(), "true", node_args
             )
             false_name, false_graph, false_guards = register_as_subgraph(
                 p_args[2].get_function(), "false", node_args
             )
-
-            if config.enforce_cond_guards_match:
-                assert (
-                    true_guards == false_guards
-                ), "Guards for true and false path must be equal."
 
             true_node = make_attr(true_name, proxy_args)
             false_node = make_attr(false_name, proxy_args)

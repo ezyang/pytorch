@@ -115,6 +115,15 @@ class InstructionTranslatorGraphState(NamedTuple):
     next_instruction: Optional[Instruction]
     lineno: int
 
+    def diff(self, other: "InstructionTranslatorGraphState") -> Optional[str]:
+        for k in self._fields:
+            if k == 'output':
+                return self.output.diff(other.output, prefix=f"{k}.")
+            sv = getattr(self, k)
+            ov = getattr(other, k)
+            if sv != ov:
+                return f"{k} mismatch: {sv} != {ov}"
+        return None
 
 def stack_op(fn: typing.Callable[..., object]):
     nargs = len(inspect.signature(fn).parameters)
