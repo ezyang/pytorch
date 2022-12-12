@@ -407,7 +407,8 @@ class DynamicShapeVariable(VariableTracker):
     def evaluate_expr(self, output_graph):
         if not isinstance(self.dyn_shape, torch.SymInt):
             return self.dyn_shape
-        return output_graph.shape_env.evaluate_expr(self.dyn_shape.get_pyobj().expr)
+        node = self.dyn_shape.get_pyobj()
+        return output_graph.shape_env.evaluate_expr(node.expr, node.fx_node)
 
     def call_method(
         self,

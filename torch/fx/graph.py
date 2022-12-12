@@ -429,7 +429,7 @@ class CodeGen(object):
                 body.append('\n')
                 return
             nodes_to_delete = user_to_last_uses.get(user, [])
-            if len(nodes_to_delete):
+            if len(nodes_to_delete) and False:
                 to_delete_str = ' = '.join([repr(n) for n in nodes_to_delete] + ['None'])
                 body.append(f';  {to_delete_str}\n')
             else:
