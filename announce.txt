@@ -1,0 +1,74 @@
+# The PyTorch symbolic shape reasoning dataset
+
+There have been many proposals for expressive type systems that can reason
+about the shapes of tensors in deep learning programs.  Some applications
+for these type systems include:
+
+- Reporting size errors to users at compile-time rather than run-time
+- Automatically inferring a set of valid inputs for an arbitrary function
+- Determining a set of inputs that would produce a desired output size
+- Reporting the output sizes of a network as a symbolic expression over
+  input sizes
+
+While the problem of reasoning about shape expressions is fairly amenable to
+techniques developed by the PL community, a common challenge for researchers
+is that there is no good way to evaluate a proposed system in the real world
+without embarking on the project of integrating it with a widely used deep
+learning framework like TensorFlow or PyTorch.  Making matters worse, one also
+has to build out shape rules for the hundreds of operations these frameworks
+support.
+
+The PyTorch symbolic shape reasoning dataset offers a way to evaluate the core
+of a shape type system, without all the work of integrating with a framework.
+This dataset consists of a collection of shape programs for benchmark models
+in torchbench, HuggingFace and TIMM.  These shape programs record the
+integer-level shape computations that were carried out during the execution of
+these models.  In particular, all operators are erased from these shape
+programs; a shape program only consists of simple arithmetic operations like
+add and multiply.  The symbolic shapes project at PyTorch has done the hard
+work of writing the shape rules for its operators!
+
+There are some limitations to this dataset.  Most notably, the dataset is rank
+specialized: we assume that inputs have a fixed dimensionality and thus there
+is no reasoning about potentially arbitrarily sized lists of integers.  The
+dataset was also collected by "tracing" real world Python code; consequently,
+the shape programs are messy and contain asserts for every point in which
+the control flow of the traced program depended on a boolean value computed
+from the symbolic sizes.
+
+Some open questions from this dataset, which are of particular interest to
+us as framework implementors:
+
+- What are the best heuristics for strengthening preconditions ahead of
+  time (and is it necessary)?  The shape programs in this dataset assume
+  nothing about their inputs, and subsequently many of the asserts spend
+  a lot of time establishing basic preconditions like "sizes are positive"
+  and "the strides of this tensor are contiguous."  In our implemented
+  reasoning system for symbolic shapes, we approximate our shape functions
+  by making assumptions like "two inputs whose sizes are the same can be
+  represented with the same variable" and "an input whose size is 0 or 1 can
+  be assumed to be constant), in order to help reduce the size of symbolic
+  expressions and reduce the number of runtime guards we must generate in
+  compiled code.  The downside of doing this is our subsequent shape programs
+  are more specialized, and may not apply to other size inputs.  What is
+  the best approach for strengthening these preconditions?
+
+- What is a good SMT theory for performing satisfiability reasoning on
+  shape programs (e.g., given an output shape, what is an input shape that
+  produces it?)  Subsets of our supported operations have preexisting theories,
+  but we are not aware of any theory which handles all of these operations
+  simultaneously.  Note that in occasional cases, shape reasoning is done
+  with floating point numbers!  Similarly, we may want to use an SMT-like
+  tool to perform entailment reasoning: given the set of asserts we have
+  collected so far, is another assert redundant?  We are also interested in
+  reasoning approaches that don't require a SAT solver.
+
+- What is a simple to implement reasoning system that is fast?  We currently
+  use Sympy to manage many algebraic simplifications, but in fact we spend
+  a lot of time doing Sympy simplification in our system.  Is there a way
+  to make Sympy go faster; or is it possible a more tailored algebraic
+  simplification system would do better?
+
+The full list of arithmetic operations in the dataset (their semantics are taken from
+Python): add, sub, mul, mod, pow, truediv, floordiv, eq, gt, lt, le, ge, floor, ceil,
+neg, min, max, sqrt.

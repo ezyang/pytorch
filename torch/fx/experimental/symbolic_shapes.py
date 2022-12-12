@@ -1,6 +1,7 @@
 import torch
 from typing import Set, Dict, List, Type, Optional, cast
 import sys
+import re
 import itertools
 import operator
 import builtins
@@ -13,6 +14,7 @@ import traceback
 import collections
 import textwrap
 import logging
+import torch.fx
 from torch import SymInt, SymFloat
 from torch._guards import ShapeGuard
 
@@ -152,6 +154,8 @@ def fx_placeholder_vals(gm):
 def eval_guards(gm, *args):
     return gm.shape_env.evaluate_guards_for_args(fx_placeholder_vals(gm), args)
 
+COLLECT_FX = True
+
 # TODO: An incomplete list
 # 1. Set variables to be equal when we do equality
 # 2. Specialize on 0/1 when we do subtraction
@@ -160,10 +164,12 @@ class SymNode:
     This is a type erased SymInt/SymFloat which we use to do actual operations.
     End users don't touch this.  Magic methods are NOT defined on this object.
     """
-    def __init__(self, expr, shape_env, pytype, constant=None):
+    def __init__(self, expr, shape_env, pytype, fx_node, constant=None):
         self._expr = expr
         self.shape_env = shape_env
         self.pytype = pytype
+        # Can be None if we're not tracking this
+        self.fx_node = fx_node if COLLECT_FX else None
         self.constant = constant
 
     @property
@@ -182,11 +188,11 @@ class SymNode:
 
     def wrap_int(self, num):
         assert isinstance(num, int)
-        return SymNode(sympy.Integer(num), self.shape_env, int, constant=num)
+        return SymNode(sympy.Integer(num), self.shape_env, int, num, constant=num)
 
     def wrap_float(self, num):
         assert isinstance(num, float)
-        return SymNode(sympy.Float(num), self.shape_env, float, constant=num)
+        return SymNode(sympy.Float(num), self.shape_env, float, num, constant=num)
 
     def clone(self):
         return self
@@ -215,15 +221,15 @@ class SymNode:
     def guard_int(self, file, line):
         # TODO: use the file/line for some useful diagnostic on why a
         # guard occurred
-        return int(self.shape_env.evaluate_expr(self.expr))
+        return int(self.shape_env.evaluate_expr(self.expr, self.fx_node))
 
     def guard_float(self, file, line):
         # TODO: use the file/line for some useful diagnostic on why a
         # guard occurred
-        return float(self.shape_env.evaluate_expr(self.expr))
+        return float(self.shape_env.evaluate_expr(self.expr, self.fx_node))
 
     def bool_(self):
-        return bool(self.shape_env.evaluate_expr(self.shape_env.replace(self.expr)))
+        return bool(self.shape_env.evaluate_expr(self.shape_env.replace(self.expr), self.fx_node))
 
 
 if HAS_SYMPY:
@@ -340,16 +346,19 @@ def _make_node_magic(method, func):
         except Exception:
             logging.warning(f"failed to eval {method}({expr}, {other_expr})")
             raise
+        fx_node = None
         out = sympy.expand(out)
         pytype: Type
         if method in always_float_magic_methods:
             pytype = float
         else:
             pytype = self.pytype
+        if COLLECT_FX:
+            fx_node = self.shape_env.fx_create_call_function(op, (self.fx_node, other.fx_node))
 
         # TODO: relational operators actually technically return a
         # PySymBool, this is a type error
-        return SymNode(out, self.shape_env, pytype)
+        return SymNode(out, self.shape_env, pytype, fx_node)
 
     def unary_magic_impl(self):
         if SYM_FUNCTION_MODE:
@@ -377,8 +386,10 @@ def _make_node_magic(method, func):
             pytype = float
         else:
             pytype = self.pytype
+        if COLLECT_FX:
+            fx_node = self.fx_create_call_function(op, (self.fx_node, ))
 
-        return SymNode(out, self.shape_env, pytype)
+        return SymNode(out, self.shape_env, pytype, fx_node)
 
     if method in unary_magic_methods:
         setattr(SymNode, method, unary_magic_impl)
@@ -495,6 +506,9 @@ class ShapeEnv(object):
         self.tls = threading.local()
         self.unbacked_symfloat_counter = itertools.count()
         self.unbacked_symint_counter = itertools.count()
+        self.fx_tracer = torch.fx.Tracer() if COLLECT_FX else None
+        self.fx_tracer.graph = torch.fx.Graph() if COLLECT_FX else None
+        self.fx_hash_cons = {}
 
     def _suppress_guards_tls(self):
         return getattr(self.tls, "suppress_guards", False)
@@ -550,18 +564,23 @@ class ShapeEnv(object):
                 )
                 stride[i] = self.create_symbol(val, sname=f"{sname}.stride({i})")
         assert all(x is not None for x in stride)
-        sym_size = [self.create_symintnode(i) for i in size]
+        sym_size = [self.create_symintnode(size_expr, sname=f"{sname}.size({i})") for i, size_expr in enumerate(size)]
         sym_stride = []
         for i, stride_expr in enumerate(stride):
             # NB: Don't duck size the stride; instead use the expression
             # we computed
             assert stride_expr is not None
-            sym_stride.append(self.create_symintnode(stride_expr))
-        sym_storage_offset = self.create_symintnode(self.create_symbol(ex.storage_offset(), sname=f"{sname}.storage_offset()"))
+            sym_stride.append(self.create_symintnode(stride_expr, sname=f"{sname}.stride({i})"))
+        sym_storage_offset = self.create_symintnode(self.create_symbol(ex.storage_offset(), sname=f"{sname}.storage_offset()"), sname=f"{sname}.storage_offset()")
         return sym_size, sym_stride, sym_storage_offset
 
-    def create_symintnode(self, sym: "sympy.Expr"):
-        return SymInt(SymNode(sym, self, int))
+    def create_symintnode(self, sym: "sympy.Expr", *, sname: str):
+        fx_node = None
+        if COLLECT_FX:
+            # TODO: ensure there aren't conflicts
+            mangled_sname = re.sub(r'[^a-zA-Z0-9]', '_', re.sub(r'[()]', '', sname))
+            fx_node = self.fx_tracer.create_node('placeholder', mangled_sname, (), {})
+        return SymInt(SymNode(sym, self, int, fx_node))
 
     def create_unbacked_symfloat(self):
         symbol = Symbol(f"f{next(self.unbacked_symfloat_counter)}")
@@ -918,11 +937,42 @@ class ShapeEnv(object):
             # raise RuntimeError(f"RecursionError in sympy.solve({lhs} - {rhs}, {free[0]})")
             return
 
+    def fx_create_call_function(self, op, args):
+        assert COLLECT_FX
+        # Peephole optimize
+        def int_eq(x, y):
+            return isinstance(x, int) and x == y
+        if op is operator.add:
+            if int_eq(args[0], 0):
+                return args[1]
+            elif int_eq(args[1], 0):
+                return args[0]
+        elif op is operator.mul:
+            if int_eq(args[0], 1):
+                return args[1]
+            elif int_eq(args[1], 1):
+                return args[0]
+        k = (op, args)
+        if k not in self.fx_hash_cons:
+            self.fx_hash_cons[k] = self.fx_tracer.create_node("call_function", op, args, {})
+        return self.fx_hash_cons[k]
+
     @lru_cache(256)
-    def evaluate_expr(self, expr: "sympy.Expr"):
+    def evaluate_expr(self, expr: "sympy.Expr", fx_node):
         """
         Given an expression, evaluates it, adding guards if necessary
         """
+        if COLLECT_FX:
+            concrete_val = self.size_hint(expr)
+            if concrete_val is sympy.true:
+                self.fx_create_call_function(torch._assert, (fx_node, ""))
+            elif concrete_val is sympy.false:
+                neg_fx_node = self.fx_create_call_function(operator.__not__, (fx_node,))
+                self.fx_create_call_function(torch._assert, (neg_fx_node, ""))
+            else:
+                eq_fx_node = self.fx_create_call_function(operator.__eq__, (fx_node, concrete_val))
+                self.fx_create_call_function(torch._assert, (eq_fx_node, ""))
+
         if len(expr.free_symbols) == 0:
             return expr
         expr = self.simplify(expr)
