@@ -11,7 +11,7 @@ from torch.fx.experimental.proxy_tensor import is_sym_node
 import logging
 
 import torch
-from torch import SymInt
+from torch import SymInt, SymFloat
 import torch.fx.traceback as fx_traceback
 import torch.nn as nn
 import torch.utils._pytree as pytree
@@ -1510,6 +1510,8 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
                     ty = "Int"
                     if n.target.__name__ in ['eq', 'ne', 'le', 'lt', 'ge', 'gt', 'not_']:
                         ty = "Bool"
+                    if isinstance(n.meta['val'], SymFloat):
+                        ty = "Real"
                     if n.target.__name__ == "sym_float":
                         print(f"(define-fun {n.name} () {ty} {' '.join(V(a) for a in n.args)})", file=f)
                     else:
