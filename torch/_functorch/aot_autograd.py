@@ -1433,8 +1433,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
     shape_tracer = fake_mode.shape_env.fx_tracer
     shape_graph = shape_tracer.graph
     shape_outputs = []
-    for o in out:
-        t = out.meta['val']
+    for t in out:
         # TODO: handle symint out too
         assert isinstance(t, torch.Tensor)
         shape_outputs.append(TensorMeta(
