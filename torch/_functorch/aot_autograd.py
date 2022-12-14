@@ -1420,7 +1420,7 @@ def describe_input(i, aot_config):
 # are no duplicate arguments in flat_args (e.g., the same Tensor
 # object never shows up twice.  However, two tensor inputs MAY alias
 # the same storage, so long as they have separate TensorImpls.)
-def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfig):
+def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfig, *, fake_mode):
 
     with enable_python_dispatcher():
         (
@@ -1428,6 +1428,26 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
             out,
             _num_aliasing_metadata_outs,
         ) = run_functionalized_fw_and_collect_metadata(flat_fn)(*flat_args)
+
+    print(model_name)
+    shape_tracer = fake_mode.shape_env.fx_tracer
+    shape_graph = shape_tracer.graph
+    shape_outputs = []
+    for o in out:
+        t = out.meta['val']
+        # TODO: handle symint out too
+        assert isinstance(t, torch.Tensor)
+        shape_outputs.append(TensorMeta(
+            size=[s.node.fx_node if isinstance(s, SymInt) else s for s in t.size()],
+            stride=[s.node.fx_node if isinstance(s, SymInt) else s for s in t.stride()],
+            storage_offset=t.storage_offset().node.fx_node if isinstance(t.storage_offset(), SymInt) else t.storage_offset()
+        ))
+
+    shape_tracer.create_node("output", "", (shape_outputs,), {})
+    # Better not to DCE
+    # shape_graph.eliminate_dead_code()
+
+    torch.fx.GraphModule({}, shape_graph).print_readable()
 
     # pre-compute, so we can bail out quickly in the hotpath
     _num_outputs_aliased_to_inputs = len(
@@ -1478,7 +1498,6 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
         flat_args, _fw_metadata.mutated_input_info
     )
 
-    print(model_name)
     joint_forward_backward = create_joint_forward_backward_functionalized(
         flat_fn,
         meta=_fw_metadata,
@@ -2014,7 +2033,7 @@ def create_aot_dispatcher_function(
         # crappy version of dispatcher
         # TODO: Do this properly
         if needs_autograd:
-            compiler_fn = aot_dispatch_autograd
+            compiler_fn = partial(aot_dispatch_autograd, fake_mode=fake_mode)
         else:
             compiler_fn = aot_dispatch_base
 
