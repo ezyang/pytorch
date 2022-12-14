@@ -1868,9 +1868,6 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
                         )
                         fw_outs_including_aliases.append(aliased_out)
 
-            for inner_out, user_out in zip(fw_outs, fw_outs_including_aliases):
-                # Sanity check assert
-                assert type(inner_out) == type(user_out)
             return fw_outs_including_aliases
         else:
             return fw_outs
