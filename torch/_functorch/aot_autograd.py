@@ -68,6 +68,47 @@ AOT_COUNTER = itertools.count()
 KNOWN_TYPES = [torch.Tensor, int, str, float, bool, torch.SymInt, torch.SymFloat]
 
 
+symbols = {
+    'neg': '-',
+    'sub': '-',
+    'add': '+',
+    'mul': '*',
+    'floordiv': 'div',
+    'mod': 'mod',
+    'eq': '=',
+    'ne': 'distinct',
+    'le': '<=',
+    'lt': '<',
+    'ge': '>=',
+    'gt': '>',
+    'not_': 'not',
+    'neg': '-',
+    # float-y stuff
+    'pow': '^',
+    'div': '/',
+    'truediv': '/',
+    # not in the standard theories
+    'floor': 'floor',
+    'ceil': 'ceil',
+    'min': 'min2',  # avoid symbol conflict per https://stackoverflow.com/questions/11219085/the-min-function-for-integers-in-z3
+    'max': 'max2',
+    'sym_sqrt': 'sqrt',  # could use pow I guess, or any other modeling lol
+}
+
+def render(t):
+    if t.__name__ in symbols:
+        return symbols[t.__name__]
+    else:
+        raise AssertionError(f"unknown {t.__name__}")
+        #return t.__name__
+
+def V(x):
+    if isinstance(x, torch.fx.Node):
+        return x.name
+    else:
+        return str(x)
+
+
 @contextmanager
 def preserve_rng_state():
     rng_state = torch.clone(torch.random.get_rng_state())
@@ -1435,7 +1476,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
             _num_aliasing_metadata_outs,
         ) = run_functionalized_fw_and_collect_metadata(flat_fn)(*flat_args)
 
-    print(model_name)
+    #print(model_name)
     shape_tracer = fake_mode.shape_env.fx_tracer
     shape_graph = shape_tracer.graph
     shape_outputs = []
@@ -1452,7 +1493,39 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
     # Better not to DCE
     # shape_graph.eliminate_dead_code()
 
-    torch.fx.GraphModule({}, shape_graph).print_readable()
+    #torch.fx.GraphModule({}, shape_graph).print_readable()
+
+    with open(f'/tmp/ezyang/{get_aot_graph_name()}.smt2', 'w') as f:
+        print("(set-option :produce-models true)", file=f)
+        get_values = []
+        for n in shape_graph.nodes:
+            if n.op == "placeholder":
+                get_values.append(n.name)
+                print(f"(declare-const {n.name} Int)", file=f)
+            elif n.op == "call_function":
+                if n.target is torch._assert:
+                    print(f"(assert {n.args[0].name})", file=f)
+                else:
+                    # TODO: fold single use nodes
+                    ty = "Int"
+                    if n.target.__name__ in ['eq', 'ne', 'le', 'lt', 'ge', 'gt', 'not_']:
+                        ty = "Bool"
+                    print(f"(define-fun {n.name} () {ty} ({render(n.target)} {' '.join(V(a) for a in n.args)})), file=f")
+            elif n.op == "output":
+                for i, o in enumerate(n.args[0]):
+                    for j, s in enumerate(o.size):
+                        print(f"(define-fun output{i}_size{j} () Int {V(s)})", file=f)
+                        get_values.append(f"output{i}_size{j}")
+                    for j, s in enumerate(o.stride):
+                        print(f"(define-fun output{i}_stride{j} () Int {V(s)})", file=f)
+                        get_values.append(f"output{i}_stride{j}")
+                    print(f"(define-fun output{i}_storage_offset () Int {V(o.storage_offset)})", file=f)
+                    get_values.append(f"output{i}_storage_offset")
+            else:
+                raise AssertionError(n.op)
+        print("(check-sat)", file=f)
+        print("(get-model)", file=f)
+
 
     # pre-compute, so we can bail out quickly in the hotpath
     _num_outputs_aliased_to_inputs = len(
