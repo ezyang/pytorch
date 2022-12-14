@@ -1510,7 +1510,10 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
                     ty = "Int"
                     if n.target.__name__ in ['eq', 'ne', 'le', 'lt', 'ge', 'gt', 'not_']:
                         ty = "Bool"
-                    print(f"(define-fun {n.name} () {ty} ({render(n.target)} {' '.join(V(a) for a in n.args)})), file=f")
+                    if n.target.__name__ == "sym_float":
+                        print(f"(define-fun {n.name} () {ty} {' '.join(V(a) for a in n.args)}), file=f")
+                    else:
+                        print(f"(define-fun {n.name} () {ty} ({render(n.target)} {' '.join(V(a) for a in n.args)})), file=f")
             elif n.op == "output":
                 for i, o in enumerate(n.args[0]):
                     for j, s in enumerate(o.size):
