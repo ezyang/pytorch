@@ -482,6 +482,9 @@ if HAS_SYMPY:
             return self.symbol_to_source[expr][0]
 
 
+class SymbolicShapesConfig:
+    debug = os.environ.get("TORCH_SYMBOLIC_SHAPES_DEBUG", False)
+
 
 class ShapeEnv(object):
     def __init__(self):
