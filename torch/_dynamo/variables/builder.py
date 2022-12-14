@@ -790,6 +790,7 @@ def wrap_fx_proxy_cls(
                 kwargs["static_shapes"] = True
                 kwargs["sname"] = "__constant_illegal_sname"
             else:
+                kwargs["static_shapes"] = options.get("static_shapes", False)
                 kwargs["sname"] = options["source"].name()
             example_value = wrap_to_fake_tensor_and_record(
                 example_value, tx=tx, **kwargs
