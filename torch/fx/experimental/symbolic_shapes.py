@@ -473,7 +473,12 @@ if HAS_SYMPY:
 
         def _print_Symbol(self, expr) -> str:
             assert isinstance(expr, Symbol), str(type(expr))
-            assert expr in self.symbol_to_source, f"{expr} (could be from {expr.snames}) not in {self.symbol_to_source}"
+            if expr not in self.symbol_to_source:
+                raise AssertionError(
+                    f"\n\nUnbound variable '{expr}' allocated at:\n{expr.stack}\n"
+                    f"AssertionError: {expr} (could be from {expr.snames}) not "
+                    "in {self.symbol_to_source}"
+                )
             return self.symbol_to_source[expr][0]
 
 
