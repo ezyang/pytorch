@@ -361,13 +361,13 @@ def _make_node_magic(method, func):
         return SymNode(out, self.shape_env, pytype, fx_node)
 
     def unary_magic_impl(self):
+        if method in magic_methods_on_math:
+            op = getattr(math, method)
+        elif method in magic_methods_on_submodule:
+            op = getattr(sys.modules[__name__], method)
+        else:
+            op = getattr(operator, method)
         if SYM_FUNCTION_MODE:
-            if method in magic_methods_on_math:
-                op = getattr(math, method)
-            elif method in magic_methods_on_submodule:
-                op = getattr(sys.modules[__name__], method)
-            else:
-                op = getattr(operator, method)
             r = _handle_sym_dispatch(op, (wrap_node(self),), {})
             assert isinstance(r, (SymInt, SymFloat)), type(r)
             return r.node
