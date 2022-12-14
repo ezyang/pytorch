@@ -915,7 +915,8 @@ class ShapeEnv(object):
                     pass
             return
         except RecursionError:
-            raise RuntimeError(f"RecursionError in sympy.solve({lhs} - {rhs}, {free[0]})")
+            # raise RuntimeError(f"RecursionError in sympy.solve({lhs} - {rhs}, {free[0]})")
+            return
 
     @lru_cache(256)
     def evaluate_expr(self, expr: "sympy.Expr"):
