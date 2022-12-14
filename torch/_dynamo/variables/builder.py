@@ -740,7 +740,7 @@ def wrap_fx_proxy(tx, proxy, example_value=None, **options):
 # Note: Unfortunate split due to some gross classes existing that subclass TensorVariable
 # Should be compositional instead
 def wrap_fx_proxy_cls(
-    target_cls, tx, proxy, example_value=None, ignore_subclass=False, **options
+    target_cls, tx, proxy, example_value=None, ignore_subclass=False, static_shapes=False, **options
 ):
     if "guards" in options and options["guards"] is not None:
         tx.output.guards.update(options["guards"])
@@ -790,7 +790,7 @@ def wrap_fx_proxy_cls(
                 kwargs["static_shapes"] = True
                 kwargs["sname"] = "__constant_illegal_sname"
             else:
-                kwargs["static_shapes"] = options.get("static_shapes", False)
+                kwargs["static_shapes"] = static_shapes
                 kwargs["sname"] = options["source"].name()
             example_value = wrap_to_fake_tensor_and_record(
                 example_value, tx=tx, **kwargs
