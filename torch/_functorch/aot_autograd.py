@@ -1415,6 +1415,11 @@ def describe_input(i, aot_config):
     else:
         return f"input {i - aot_config.num_params_buffers}"
 
+from typing import NamedTuple
+class TensorMeta(NamedTuple):
+    size: List[int]
+    stride: List[int]
+    storage_offset: int
 
 # Has the precondition that there
 # are no duplicate arguments in flat_args (e.g., the same Tensor
