@@ -1478,6 +1478,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
         flat_args, _fw_metadata.mutated_input_info
     )
 
+    print(model_name)
     joint_forward_backward = create_joint_forward_backward_functionalized(
         flat_fn,
         meta=_fw_metadata,
