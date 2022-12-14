@@ -354,7 +354,7 @@ def _make_node_magic(method, func):
         else:
             pytype = self.pytype
         if COLLECT_FX:
-            fx_node = self.shape_env.fx_create_call_function(op, (self.fx_node, other.fx_node))
+            fx_node = self.shape_env.fx_create_call_function(op, (self.fx_node, other.fx_node), pytype)
 
         # TODO: relational operators actually technically return a
         # PySymBool, this is a type error
@@ -387,7 +387,7 @@ def _make_node_magic(method, func):
         else:
             pytype = self.pytype
         if COLLECT_FX:
-            fx_node = self.shape_env.fx_create_call_function(op, (self.fx_node, ))
+            fx_node = self.shape_env.fx_create_call_function(op, (self.fx_node, ), pytype)
 
         return SymNode(out, self.shape_env, pytype, fx_node)
 
@@ -937,7 +937,7 @@ class ShapeEnv(object):
             # raise RuntimeError(f"RecursionError in sympy.solve({lhs} - {rhs}, {free[0]})")
             return
 
-    def fx_create_call_function(self, op, args):
+    def fx_create_call_function(self, op, args, pytype):
         assert COLLECT_FX
         # Peephole optimize
         def int_eq(x, y):
@@ -954,7 +954,9 @@ class ShapeEnv(object):
                 return args[0]
         k = (op, args)
         if k not in self.fx_hash_cons:
-            self.fx_hash_cons[k] = self.fx_tracer.create_node("call_function", op, args, {})
+            n = self.fx_tracer.create_node("call_function", op, args, {})
+            n.meta['pytype'] = pytype
+            self.fx_hash_cons[k] = n
         return self.fx_hash_cons[k]
 
     @lru_cache(256)
@@ -965,13 +967,13 @@ class ShapeEnv(object):
         if COLLECT_FX:
             concrete_val = self.size_hint(expr)
             if concrete_val is sympy.true:
-                self.fx_create_call_function(torch._assert, (fx_node, ""))
+                self.fx_create_call_function(torch._assert, (fx_node, ""), None)
             elif concrete_val is sympy.false:
-                neg_fx_node = self.fx_create_call_function(operator.__not__, (fx_node,))
-                self.fx_create_call_function(torch._assert, (neg_fx_node, ""))
+                neg_fx_node = self.fx_create_call_function(operator.__not__, (fx_node,), bool)
+                self.fx_create_call_function(torch._assert, (neg_fx_node, ""), None)
             else:
-                eq_fx_node = self.fx_create_call_function(operator.__eq__, (fx_node, concrete_val))
-                self.fx_create_call_function(torch._assert, (eq_fx_node, ""))
+                eq_fx_node = self.fx_create_call_function(operator.__eq__, (fx_node, concrete_val), bool)
+                self.fx_create_call_function(torch._assert, (eq_fx_node, ""), None)
 
         if len(expr.free_symbols) == 0:
             return expr
