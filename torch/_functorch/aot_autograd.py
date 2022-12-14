@@ -11,6 +11,7 @@ from torch.fx.experimental.proxy_tensor import is_sym_node
 import logging
 
 import torch
+from torch import SymInt
 import torch.fx.traceback as fx_traceback
 import torch.nn as nn
 import torch.utils._pytree as pytree
