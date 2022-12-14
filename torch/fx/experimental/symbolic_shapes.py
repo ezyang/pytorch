@@ -592,6 +592,7 @@ class ShapeEnv(object):
         # Create a duck sized int if necessary
         if val not in self.val_to_var:
             sympy_expr = Symbol(f"s{len(self.var_to_val)}", positive=True, integer=True)
+            sympy_expr.stack = ''.join(traceback.format_list(traceback.extract_stack()[:-1]))
             self.var_to_val[sympy_expr] = sympy.Integer(val)
             self.val_to_var[val] = sympy_expr
 
