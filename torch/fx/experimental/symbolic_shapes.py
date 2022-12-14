@@ -387,7 +387,7 @@ def _make_node_magic(method, func):
         else:
             pytype = self.pytype
         if COLLECT_FX:
-            fx_node = self.fx_create_call_function(op, (self.fx_node, ))
+            fx_node = self.shape_env.fx_create_call_function(op, (self.fx_node, ))
 
         return SymNode(out, self.shape_env, pytype, fx_node)
 
