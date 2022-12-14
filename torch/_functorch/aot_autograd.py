@@ -1482,7 +1482,8 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
     shape_outputs = []
     for t in out:
         # TODO: handle symint out too
-        assert isinstance(t, torch.Tensor)
+        if not isinstance(t, torch.Tensor):
+            continue
         shape_outputs.append(TensorMeta(
             size=[s.node.fx_node if isinstance(s, SymInt) else s for s in t.size()],
             stride=[s.node.fx_node if isinstance(s, SymInt) else s for s in t.stride()],
