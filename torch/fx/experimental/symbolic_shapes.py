@@ -351,6 +351,10 @@ def _make_node_magic(method, func):
         pytype: Type
         if method in always_float_magic_methods:
             pytype = float
+        elif method in always_bool_magic_methods:
+            pytype = int
+        elif self.pytype is float or other.pytype is float:
+            pytype = float
         else:
             pytype = self.pytype
         if COLLECT_FX:
