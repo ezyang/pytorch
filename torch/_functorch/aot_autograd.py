@@ -87,14 +87,15 @@ symbols = {
     'pow': '^',
     'div': '/',
     'truediv': '/',
+    # TODO: behavior on negative numbers a bit wobbly
     'sym_float': 'to_real',
     'sym_int': 'to_int',
+    'floor': 'to_int',
     # not in the standard theories
-    'floor': 'floor',
     'ceil': 'ceil',
     'min': 'min2',  # avoid symbol conflict per https://stackoverflow.com/questions/11219085/the-min-function-for-integers-in-z3
     'max': 'max2',
-    'sym_sqrt': 'sqrt',  # could use pow I guess, or any other modeling lol
+    'sym_sqrt': 'sqrt',
 }
 
 def render(t):
@@ -1499,7 +1500,15 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
     #torch.fx.GraphModule({}, shape_graph).print_readable()
 
     with open(f'/tmp/ezyang/{get_aot_graph_name()}.smt2', 'w') as f:
-        print("(set-option :produce-models true)", file=f)
+        # Some encodings for missing functions.  These encodings
+        # are not necessarily good.  You may want to support them natively
+        print("""\
+(set-option :produce-models true)
+(define-fun ceil ((x Real)) Int (ite (= (to_int x) x) (to_int x) (+ (to_int x) 1)))
+(define-fun min2 ((x Int) (y Int)) Int (ite (< x y) x y))
+(define-fun max2 ((x Int) (y Int)) Int (ite (> x y) x y))
+(define-fun sqrt ((x Real)) Real (^ x 0.5))
+""", file=f)
         get_values = []
         for n in shape_graph.nodes:
             if n.op == "placeholder":
