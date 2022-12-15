@@ -79,10 +79,11 @@ aot_my_compiler = aot_autograd(fw_compiler=my_compiler)
 
 @torch._dynamo.optimize(aot_my_compiler, dynamic=True)
 def f(a, b):
-    return a @ b
+    assert a.size(0) * 2.0 > 1.0
 
 f(torch.randn(20, 30, requires_grad=True), torch.randn(30, 40))
 
+"""
 
 @torch._dynamo.optimize(aot_my_compiler, dynamic=True)
 def f2(inputs, filters):
@@ -91,3 +92,4 @@ def f2(inputs, filters):
 inputs = torch.randn(33, 16, 30)
 filters = torch.randn(20, 16, 5)
 f2(inputs, filters)
+"""
