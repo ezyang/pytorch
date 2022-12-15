@@ -1522,7 +1522,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
                     ty = "Int"
                     if n.target.__name__ in ['eq', 'ne', 'le', 'lt', 'ge', 'gt', 'not_']:
                         ty = "Bool"
-                    if n.meta['pytype'] is float:
+                    elif n.meta['pytype'] is float:
                         ty = "Real"
                     print(f"(define-fun {n.name} () {ty} ({render(n.target)} {' '.join(V(a) for a in n.args)}))", file=f)
             elif n.op == "output":
@@ -1535,6 +1535,8 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
                         get_values.append(f"output{i}_stride{j}")
                     print(f"(define-fun output{i}_storage_offset () Int {V(o.storage_offset)})", file=f)
                     get_values.append(f"output{i}_storage_offset")
+                # TODO: this shouldn't be necessary
+                break
             else:
                 raise AssertionError(n.op)
         print("(check-sat)", file=f)
