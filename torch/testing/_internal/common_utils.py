@@ -113,6 +113,7 @@ DEFAULT_SLOW_TESTS_FILE = '.pytorch-slow-tests.json'
 
 disabled_tests_dict = {}
 slow_tests_dict = {}
+skipped_dynamo_tests_set = set()
 
 # set them here in case the tests are running in a subprocess that doesn't call run_tests
 if os.getenv("SLOW_TESTS_FILE", ""):
@@ -937,6 +938,8 @@ TEST_WITH_TORCHDYNAMO = os.getenv('PYTORCH_TEST_WITH_DYNAMO') == '1' or TEST_WIT
 
 if TEST_WITH_TORCHDYNAMO:
     import torch._dynamo
+    with open(os.path.join(os.path.dirname(__file__), 'data', 'skipped_dynamo_tests.txt')) as fp:
+        skipped_dynamo_tests_set = set(fp.read().split('\n'))
     # Do not spend time on helper functions that are called with different
     # inputs.  Unfortunately, this affects test reproducibility.
     torch._dynamo.config.cache_size_limit = 8
@@ -1662,6 +1665,10 @@ def check_if_enable(test: unittest.TestCase):
         getattr(test, test._testMethodName).__dict__['slow_test'] = True
         if not TEST_WITH_SLOW:
             raise unittest.SkipTest("test is slow; run with PYTORCH_TEST_WITH_SLOW to enable test")
+    if TEST_WITH_TORCHDYNAMO and raw_test_name in skipped_dynamo_tests_set:
+        # TODO: link to regeneration instructions
+        raise unittest.SkipTest("test is disabled per torch/testing/_internal/data/skipped_dynamo_tests.txt")
+
     sanitized_test_method_name = remove_device_and_dtype_suffixes(test._testMethodName)
     if not IS_SANDCASTLE:
         should_skip = False
