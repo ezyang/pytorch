@@ -1552,7 +1552,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
             else:
                 raise AssertionError(n.op)
         print("(check-sat)", file=f)
-        print("(get-model)", file=f)
+        print(f"(get-values ({' '.join(get_values)}))", file=f)
 
 
     # pre-compute, so we can bail out quickly in the hotpath
