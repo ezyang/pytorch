@@ -1525,6 +1525,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Tensor], aot_config: AOTConfi
             if n.op == "placeholder":
                 get_values.append(n.name)
                 print(f"(declare-const {n.name} Int)", file=f)
+                print(f"(set-info :example-{n.name} {n.meta['example_value']})", file=f)
             elif n.op == "call_function":
                 if n.target is torch._assert:
                     print(f"(assert {n.args[0].name})", file=f)

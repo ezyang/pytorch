@@ -589,6 +589,7 @@ class ShapeEnv(object):
             # TODO: ensure there aren't conflicts
             mangled_sname = re.sub(r'[^a-zA-Z0-9]', '_', re.sub(r'[()]', '', sname))
             fx_node = self.fx_tracer.create_node('placeholder', mangled_sname, (), {})
+            fx_node.meta['example_value'] = self.size_hint(sym)
         return SymInt(SymNode(sym, self, int, fx_node))
 
     def create_unbacked_symfloat(self):
