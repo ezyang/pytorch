@@ -1114,6 +1114,7 @@ class ShapeEnv(object):
             log.warning(f"RecursionError in sympy.solve({lhs} - {rhs}, {free[0]})")
         except KeyboardInterrupt:
             log.warning(f"KeyboardInterrupt in sympy.solve({lhs} - {rhs}, {free[0]})")
+            raise
 
     @lru_cache(256)
     def evaluate_expr(self, expr: "sympy.Expr"):
