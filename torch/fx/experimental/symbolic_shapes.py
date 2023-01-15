@@ -231,7 +231,7 @@ class SymNode:
     def guard_bool(self, file, line):
         # TODO: use the file/line for some useful diagnostic on why a
         # guard occurred
-        return bool(self.shape_env.evaluate_expr(self.expr))
+        return bool(self.shape_env.evaluate_expr(self.shape_env.replace(self.expr)))
 
     def bool_(self):
         # TODO: why is the replace needed here?
