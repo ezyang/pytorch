@@ -1160,6 +1160,7 @@ void initJITBindings(PyObject* module) {
       SYMNODE_UNARY(clone)
       SYMNODE_UNARY(is_int)
       SYMNODE_UNARY(is_float)
+      SYMNODE_UNARY(is_bool)
       SYMNODE_UNARY(bool_)
       SYMNODE_UNARY(int_)
       SYMNODE_UNARY(sym_float)
@@ -1177,15 +1178,27 @@ void initJITBindings(PyObject* module) {
       SYMNODE_BINARY(ge)
       SYMNODE_BINARY(sym_min)
       SYMNODE_BINARY(sym_max)
+      SYMNODE_BINARY(sym_and)
+      SYMNODE_BINARY(sym_or)
+      SYMNODE_UNARY(sym_not)
       SYMNODE_UNARY(ceil)
       SYMNODE_UNARY(floor)
       SYMNODE_UNARY(neg)
       // Intentionally don't set file line, as the
       // Python backtrace matters more here
+      .def("is_non_overlapping_and_dense",
+          [](c10::SymNode a, c10::ArrayRef<c10::SymNode> sizes, c10::ArrayRef<c10::SymNode> strides) {
+            return a->is_non_overlapping_and_dense(sizes, strides);
+          })
       .def(
           "guard_int",
           [](c10::SymNode a) {
             return a->guard_int(nullptr, 0);
+          })
+      .def(
+          "guard_bool",
+          [](c10::SymNode a) {
+            return a->guard_bool(nullptr, 0);
           })
       .def(
           "guard_float",
@@ -1201,6 +1214,11 @@ void initJITBindings(PyObject* module) {
           "wrap_float",
           [](c10::SymNode a, double b) {
             return a->wrap_float(b);
+          })
+      .def(
+          "wrap_bool",
+          [](c10::SymNode a, bool b) {
+            return a->wrap_bool(b);
           })
       .def(
           "__str__",
