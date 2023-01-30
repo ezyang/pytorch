@@ -656,6 +656,14 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
             copy.deepcopy(gm), clone_inputs(example_inputs)
         )
         fp64_ref = run_fwd_maybe_bwd(fp64_model, fp64_examples, only_fwd)
+        print("minifier fp64", fp64_ref)
+        if hasattr(torch, 'benchmark_fp64'):
+            try:
+                print("mini and bench exactly equal", torch.allclose(torch.benchmark_fp64, fp64_ref[0], rtol=0, atol=0))
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                print("WTF")
     except Exception:
         log.warning("Could not generate fp64 outputs")
         fp64_ref = None
@@ -675,7 +683,8 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
         )
         return True
 
-    passing = same(ref, res, fp64_ref, tol=0.001, equal_nan=True)
+    print("testing")
+    passing = same(ref, res, fp64_ref, tol=0, cos_similarity=False, equal_nan=False)
     return passing
 
 
@@ -886,7 +895,7 @@ def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False):
         )
         return False
 
-    return not same_two_models(gm, compiled_gm, example_inputs, only_fwd)
+    return not same_two_models(copy.deepcopy(gm), compiled_gm, clone_inputs(example_inputs), only_fwd)
 
 
 backend_aot_accuracy_fails = functools.partial(backend_accuracy_fails, only_fwd=True)

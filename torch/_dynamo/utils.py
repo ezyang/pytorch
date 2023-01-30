@@ -909,11 +909,15 @@ def same(
                 log.warning(f"Similarity score={score.cpu().detach().item()}")
             return score >= 0.99
         else:
+            print(ref.dtype)
+            print(res.dtype)
+            print(tol)
             if not exact_dtype:
                 ref = ref.to(res.dtype)
 
             # First try usual allclose
             if torch.allclose(ref, res, atol=tol, rtol=tol, equal_nan=equal_nan):
+                print("usual passed")
                 return True
 
             # Check error from fp64 version
@@ -921,6 +925,7 @@ def same(
                 ref_error = rmse(fp64_ref, ref).item()
                 res_error = rmse(fp64_ref, res).item()
                 multiplier = 2.0
+                print(f"doing rmse {ref_error} {res_error}")
 
                 if (
                     fp64_ref.numel() < 1000

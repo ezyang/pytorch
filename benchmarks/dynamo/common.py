@@ -1257,8 +1257,10 @@ class BenchmarkRunner:
                 deepcopy_and_maybe_ddp(model),
                 clone_inputs(example_inputs),
             )
-            self.init_optimizer(name, current_device, model_fp64.parameters())
+            # self.init_optimizer(name, current_device, model_fp64.parameters())
             fp64_outputs = self.run_n_iterations(model_fp64, inputs_fp64)
+            print("benchmark fp64", fp64_outputs)
+            torch.benchmark_fp64 = fp64_outputs
         except Exception:
             log.warning(
                 f"fp64 golden ref were not generated for {name}. Setting accuracy check to cosine"
@@ -1338,6 +1340,7 @@ class BenchmarkRunner:
                 cos_similarity=cos_similarity,
                 tol=tolerance,
             ):
+                print(cos_similarity, tolerance, self.equal_nan)
                 if self.args.skip_accuracy_check:
                     accuracy_status = "pass_due_to_skip"
                 else:
