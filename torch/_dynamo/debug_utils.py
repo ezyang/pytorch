@@ -665,6 +665,7 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
     except Exception as e:
         # This means that the the minified graph is bad/exposes a different problem.
         # As we are checking accuracy here, lets log the exception and return True.
+        raise
         log.warning(
             (
                 "While minifying the program in accuracy minification mode,"
@@ -875,6 +876,7 @@ def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False):
     except Exception as e:
         # This means that the the minified graph is bad/exposes a different problem.
         # As we are checking accuracy here, lets log the exception and return False.
+        raise
         log.warning(
             (
                 "While minifying the program in accuracy minification mode,"
