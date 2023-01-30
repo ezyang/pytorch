@@ -1186,7 +1186,7 @@ class BenchmarkRunner:
             batch_size = self.decay_batch_exp(batch_size)
         return 1
 
-    def run_n_iterations(self, mod, inputs, n=2):
+    def run_n_iterations(self, mod, inputs, n=0):
         for _ in range(n - 1):
             self.model_iter_fn(mod, inputs, collect_outputs=False)
         return self.model_iter_fn(mod, inputs, collect_outputs=True)
@@ -1250,6 +1250,8 @@ class BenchmarkRunner:
                 log.warn("Disabling cudagraphs for FSDP compatibility")
             return model
 
+        save = False
+
         # Collect the fp64 reference outputs to be used later for accuracy checking.
         fp64_outputs = None
         try:
@@ -1258,9 +1260,11 @@ class BenchmarkRunner:
                 clone_inputs(example_inputs),
             )
             # self.init_optimizer(name, current_device, model_fp64.parameters())
+            if save:
+                torch.save(inputs_fp64, 'benchmark_fp64_inputs.pt')
             fp64_outputs = self.run_n_iterations(model_fp64, inputs_fp64)
-            print("benchmark fp64", fp64_outputs)
-            torch.benchmark_fp64 = fp64_outputs
+            if save:
+                torch.save(fp64_outputs, 'benchmark_fp64.pt')
         except Exception:
             log.warning(
                 f"fp64 golden ref were not generated for {name}. Setting accuracy check to cosine"
@@ -1283,17 +1287,30 @@ class BenchmarkRunner:
             reset_rng_state()
             model_copy = deepcopy_and_maybe_ddp(model)
             self.init_optimizer(name, current_device, model_copy.parameters())
+            params = {
+                **dict(model_copy.named_parameters(remove_duplicate=False)),
+                **dict(model_copy.named_buffers(remove_duplicate=False)),
+            }
+            if save:
+                torch.save(list(params.values()), 'benchmark_ref_params.pt')
+                torch.save(example_inputs, 'benchmark_ref_inputs.pt')
             correct_result = self.run_n_iterations(
                 model_copy, clone_inputs(example_inputs)
             )
+            if save:
+                torch.save(correct_result, 'benchmark_ref.pt')
 
             # Rerun native pytorch
             reset_rng_state()
             model_copy = deepcopy_and_maybe_ddp(model)
             self.init_optimizer(name, current_device, model_copy.parameters())
+            if save:
+                torch.save(example_inputs, 'benchmark_ref2_inputs.pt')
             correct_rerun_result = self.run_n_iterations(
                 model_copy, clone_inputs(example_inputs)
             )
+            if save:
+                torch.save(correct_rerun_result, 'benchmark_ref2.pt')
             if not same(
                 correct_result,
                 correct_rerun_result,
@@ -1313,7 +1330,17 @@ class BenchmarkRunner:
                 model_copy = deepcopy_and_maybe_ddp(model)
                 self.init_optimizer(name, current_device, model_copy.parameters())
                 optimized_model_iter_fn = optimize_ctx(self.run_n_iterations)
+                if save:
+                    torch.save(example_inputs, 'benchmark_opt_inputs.pt')
+                params = {
+                    **dict(model_copy.named_parameters(remove_duplicate=False)),
+                    **dict(model_copy.named_buffers(remove_duplicate=False)),
+                }
+                if save:
+                    torch.save(list(params.values()), 'benchmark_opt_params.pt')
                 new_result = optimized_model_iter_fn(model_copy, example_inputs)
+                if save:
+                    torch.save(new_result, 'benchmark_opt.pt')
             except Exception as e:
                 log.exception(e)
                 if (

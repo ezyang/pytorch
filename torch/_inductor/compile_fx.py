@@ -218,6 +218,7 @@ def align_inputs(model, inputs, static_input_idxs=()):
             if new_inputs[i].data_ptr() % ALIGNMENT:
                 new_inputs[i] = clone_preserve_strides(new_inputs[i])
         return model(new_inputs)
+    run.inner = model
 
     return run
 

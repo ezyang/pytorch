@@ -823,6 +823,10 @@ def rmse(ref, res):
     return torch.sqrt(torch.mean(torch.square(ref - res)))
 
 
+from collections import defaultdict
+STORE = defaultdict(list)
+
+
 def same(
     ref,
     res,
@@ -922,6 +926,11 @@ def same(
 
             # Check error from fp64 version
             if fp64_ref.dtype == torch.float64:
+                STORE['fp64_ref'].append(fp64_ref)
+                STORE['ref'].append(ref)
+                STORE['res'].append(res)
+                #if len(STORE['res']) == 2:
+                #    breakpoint()
                 ref_error = rmse(fp64_ref, ref).item()
                 res_error = rmse(fp64_ref, res).item()
                 multiplier = 2.0

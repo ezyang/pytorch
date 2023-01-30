@@ -555,6 +555,7 @@ class GraphLowering(torch.fx.Interpreter):
             print(code)
 
         mod = PyCodeCache.load(code)
+        mod.code = code
         for name, value in self.constants.items():
             setattr(mod, name, value)
 
@@ -565,7 +566,10 @@ class GraphLowering(torch.fx.Interpreter):
         return mod
 
     def compile_to_fn(self):
-        return self.compile_to_module().call
+        mod = self.compile_to_module()
+        r = mod.call
+        r.mod = mod
+        return r
 
     def get_output_names(self):
         assert self.graph_outputs is not None

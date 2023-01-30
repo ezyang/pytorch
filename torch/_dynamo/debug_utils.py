@@ -537,9 +537,13 @@ def wrap_compiler_debug(compiler_fn, compiler_name: str):
                     raise NotImplementedError(
                         "Accuracy minification is supported for inductor only"
                     )
-                if inner_compiled_fn is None:
-                    inner_compiled_fn = compiler_fn(gm, example_inputs, **kwargs)
-                if backend_aot_accuracy_fails(gm, real_inputs, compiler_fn):
+                inner_compiled_fn = compiler_fn(gm, example_inputs, **kwargs)
+                # Call the compiled function with real inputs
+                print("real", inner_compiled_fn.inner.mod.code)
+                r = inner_compiled_fn(real_inputs.copy())
+                torch.woofy = r
+                import functools
+                if backend_aot_accuracy_fails(gm, real_inputs, functools.partial(compiler_fn, **kwargs), real_out=r):
                     log.warning("Accuracy failed for the AOT Autograd graph")
                     dump_compiler_graph_state(
                         fx.GraphModule(gm, orig_graph),
@@ -553,8 +557,7 @@ def wrap_compiler_debug(compiler_fn, compiler_name: str):
                     )
                     raise AccuracyError("Bad accuracy detected")
                 else:
-                    # Call the compiled function with real inputs
-                    return inner_compiled_fn(real_inputs)
+                    return r
             else:
                 try:
                     # Call the compiler_fn - which is either aot_autograd or inductor
@@ -630,7 +633,7 @@ def run_fwd_maybe_bwd(gm, args, only_fwd=False):
     return collect_results(gm, out, None, args)
 
 
-def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
+def same_two_models(gm, opt_gm, example_inputs, only_fwd=False, real_out=None):
     """
     Check two models have same accuracy.
     """
@@ -649,27 +652,47 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
         opt_gm.named_parameters = named_parameters_for_optimized_module(opt_gm)
         opt_gm.named_buffers = named_buffers_for_optimized_module(opt_gm)
 
+    save = False
+
+    if save:
+        torch.save(example_inputs, 'minifier_ref_inputs.pt')
+
+    import random
+    import numpy as np
+    torch.manual_seed(1337)
+    random.seed(1337)
+    np.random.seed(1337)
     ref = run_fwd_maybe_bwd(gm, example_inputs, only_fwd)
+
+    if save:
+        torch.save(ref, 'minifier_ref.pt')
 
     try:
         fp64_model, fp64_examples = cast_to_fp64(
             copy.deepcopy(gm), clone_inputs(example_inputs)
         )
+        torch.manual_seed(1337)
+        random.seed(1337)
+        np.random.seed(1337)
         fp64_ref = run_fwd_maybe_bwd(fp64_model, fp64_examples, only_fwd)
-        print("minifier fp64", fp64_ref)
-        if hasattr(torch, 'benchmark_fp64'):
-            try:
-                print("mini and bench exactly equal", torch.allclose(torch.benchmark_fp64, fp64_ref[0], rtol=0, atol=0))
-            except Exception:
-                import traceback
-                traceback.print_exc()
-                print("WTF")
+        if save:
+            torch.save(fp64_examples, 'minifier_fp64_inputs.pt')
+            torch.save(fp64_ref, 'minifier_fp64.pt')
     except Exception:
         log.warning("Could not generate fp64 outputs")
         fp64_ref = None
 
+    if save:
+        torch.save(example_inputs, 'minifier_opt_inputs.pt')
     try:
+        torch.manual_seed(1337)
+        random.seed(1337)
+        np.random.seed(1337)
+        #print("mini", opt_gm.inner.mod.code)
         res = run_fwd_maybe_bwd(opt_gm, example_inputs, only_fwd)
+        if real_out is not None:
+            print("checking real_out")
+            assert same(real_out, res, tol=0)
     except Exception as e:
         # This means that the the minified graph is bad/exposes a different problem.
         # As we are checking accuracy here, lets log the exception and return True.
@@ -683,7 +706,8 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
         )
         return True
 
-    print("testing")
+    if save:
+        torch.save(res, 'minifier_opt.pt')
     passing = same(ref, res, fp64_ref, tol=0, cos_similarity=False, equal_nan=False)
     return passing
 
@@ -879,9 +903,9 @@ def dump_backend_state(gm, args, compiler_name, check_accuracy=False):
     # return dump_backend_repro_as_tarfile(gm, args, compiler_name)
 
 
-def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False):
+def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False, real_out=None):
     try:
-        compiled_gm = compiler_fn(copy.deepcopy(gm), clone_inputs(example_inputs))
+        compiled_gm = compiler_fn(gm, example_inputs)
     except Exception as e:
         # This means that the the minified graph is bad/exposes a different problem.
         # As we are checking accuracy here, lets log the exception and return False.
@@ -895,7 +919,12 @@ def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False):
         )
         return False
 
-    return not same_two_models(copy.deepcopy(gm), compiled_gm, clone_inputs(example_inputs), only_fwd)
+    r = not same_two_models(gm, compiled_gm, example_inputs, only_fwd, real_out=real_out)
+
+    #compiled_gm2 = compiler_fn(gm, example_inputs)
+    #assert r == (not same_two_models(gm, compiled_gm2, example_inputs, only_fwd))
+
+    return r
 
 
 backend_aot_accuracy_fails = functools.partial(backend_accuracy_fails, only_fwd=True)
