@@ -116,6 +116,7 @@ def compile_fx_inner(
     is_backward=False,
     graph_id=None,
 ):
+    print("compiling fx")
     _warn_tf32_disabled()
 
     if dynamo_utils.count_calls(gm.graph) == 0:

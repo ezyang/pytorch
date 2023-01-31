@@ -247,6 +247,10 @@ from torch.fx.experimental.proxy_tensor import make_fx
 
 {generate_config_string()}
 
+torch._dynamo.config.dynamic_shapes = True
+import torch._functorch.config
+torch._functorch.config.use_dynamic_shapes = True
+
 {TEST_REPLACEABLE_COMMENT}
 {extra_imports}
 
@@ -265,7 +269,7 @@ from torch.fx.experimental.proxy_tensor import make_fx
     model_str += (
         "args = [rand_strided(sh, st, dt, dev) for (sh, st, dt, dev) in args]\n"
     )
-    model_str += "mod = make_fx(Repro())(*args)\n"
+    model_str += "mod = make_fx(Repro(), tracing_mode='symbolic')(*args)\n"
     return model_str
 
 
@@ -375,6 +379,8 @@ def isolate_fails(fx_g, args, compiler_name: str, env=None, patch_code=None):
     new_env = {**new_env, **env}
     stdout, stderr = TemporaryFile(), TemporaryFile()
 
+    print(file_name)
+
     if use_buck:
         cmd = BuckTargetWriter(file_name).write(print_msg=False)
     else:
@@ -383,8 +389,8 @@ def isolate_fails(fx_g, args, compiler_name: str, env=None, patch_code=None):
     p = subprocess.Popen(
         cmd,
         cwd=subdir,
-        stdout=stdout,
-        stderr=stderr,
+        #stdout=stdout,
+        #stderr=stderr,
         env=new_env,
     )
     p.wait()
@@ -492,7 +498,7 @@ class AccuracyError(Exception):
     pass
 
 
-def wrap_compiler_debug(compiler_fn, compiler_name: str):
+def wrap_compiler_debug(unconfigured_compiler_fn, compiler_name: str):
     """
     Minifier for Fx Graph modules after Aot Autograd has finished. We wrap both
     forward and backward call separately with the backend compiler_fn - like
@@ -667,7 +673,7 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
     except Exception as e:
         # This means that the the minified graph is bad/exposes a different problem.
         # As we are checking accuracy here, lets log the exception and return True.
-        log.warning(
+        log.exception(
             (
                 "While minifying the program in accuracy minification mode,"
                 "ran into a runtime exception which is likely an unrelated issue."
@@ -676,7 +682,7 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
         )
         return True
 
-    passing = same(ref, res, fp64_ref, tol=0.001, equal_nan=True)
+    passing = same(ref, res, fp64_ref, tol=0.00001, equal_nan=True)
     return passing
 
 
@@ -877,7 +883,7 @@ def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False):
     except Exception as e:
         # This means that the the minified graph is bad/exposes a different problem.
         # As we are checking accuracy here, lets log the exception and return False.
-        log.warning(
+        log.exception(
             (
                 "While minifying the program in accuracy minification mode,"
                 "ran into a runtime exception which is likely an unrelated issue."
@@ -1107,7 +1113,7 @@ def dynamo_accuracy_minifier_backend(gm, example_inputs, compiler_name):
     gm.eval()
 
     # Check Accuracy
-    if backend_accuracy_fails(gm, example_inputs, functools.partial(compiler_fn):
+    if backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=True):
         log.warning("Accuracy failed for the TorchDyanmo produced graph")
         dump_state_fn = functools.partial(
             dump_backend_state, compiler_name=compiler_name, check_accuracy=True
@@ -1115,6 +1121,7 @@ def dynamo_accuracy_minifier_backend(gm, example_inputs, compiler_name):
         fails_fn = functools.partial(
             backend_accuracy_fails,
             compiler_fn=compiler_fn,
+            only_fwd=True,
         )
         dump_state_fn(fx.GraphModule(gm, copy.deepcopy(gm.graph)), example_inputs)
         minifier(

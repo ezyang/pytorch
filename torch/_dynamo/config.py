@@ -66,7 +66,7 @@ constant_functions = {
 
 
 # don't specialize on shapes and strides and put shape ops in graph
-dynamic_shapes = os.environ.get("TORCHDYNAMO_DYNAMIC_SHAPES") == "1"
+dynamic_shapes = True
 
 # Set this to False to assume nn.Modules() contents are immutable (similar assumption as freezing)
 guard_nn_modules = False

@@ -636,6 +636,11 @@ class ShapeEnv(object):
         self.unbacked_symfloat_counter = itertools.count()
         self.unbacked_symint_counter = itertools.count()
 
+    def __getstate__(self):
+        r = self.__dict__.copy()
+        del r['tls']
+        return r
+
     def _suppress_guards_tls(self):
         return getattr(self.tls, "suppress_guards", False)
 
