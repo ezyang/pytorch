@@ -423,14 +423,9 @@ def nonzero(fake_mode, func, arg):
         raise DynamicOutputShapeException(func)
     nnz = fake_mode.shape_env.create_unbacked_symint()
 
-    # TODO: Replace this with a range analysis, so we don't have to do all
-    # these by hand
-    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz >= 0).node.expr, True))
-    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz < 0).node.expr, False))
-    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz == -1).node.expr, False))
-    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz != -1).node.expr, True))
-    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((3*nnz == -1).node.expr, False))
-    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((3*nnz >= 0).node.expr, True))
+    # TODO: max can propagate too
+    from torch.fx.experimental.symbolic_shapes import constrain_range
+    constrain_range(nnz, min=0)
 
     return arg.new_empty((nnz, arg.dim()), dtype=torch.int64)
 

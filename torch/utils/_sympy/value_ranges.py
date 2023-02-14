@@ -23,7 +23,7 @@ class ValueRanges:
     def wrap(cls, arg):
         if isinstance(arg, ValueRanges):
             return arg
-        assert isinstance(arg, (int, float, bool))
+        #assert isinstance(arg, (int, float, bool)), type(arg)
         return ValueRanges(arg, arg)
 
     @classmethod
@@ -74,17 +74,35 @@ class ValueRanges:
         ]
         return ValueRanges(min(products), max(products))
 
+    def __add__(self, other):
+        return ValueRangeAnalysis.add(self, other)
+
+    def __sub__(self, other):
+        return ValueRangeAnalysis.sub(self, other)
+
+    def __mul__(self, other):
+        return ValueRangeAnalysis.mul(self, other)
+
+    def __neg__(self):
+        return ValueRangeAnalysis.neg(self)
+
+    def __le__(self, other):
+        return ValueRangeAnalysis.le(self, other)
+
+    def __lt__(self, other):
+        return ValueRangeAnalysis.lt(self, other)
+
+    def __ge__(self, other):
+        return ValueRangeAnalysis.ge(self, other)
+
+    def __gt__(self, other):
+        return ValueRangeAnalysis.gt(self, other)
+
 
 class ValueRangeAnalysis:
     def __init__(self):
         self.name = "ValueRangeAnalysis"
         boolean_operators = (
-            "eq",
-            "ne",
-            "lt",
-            "gt",
-            "le",
-            "ge",
             "and_",
             "or_",
             "xor",
@@ -94,6 +112,69 @@ class ValueRangeAnalysis:
         )
         for op in boolean_operators:
             setattr(self, op, self.bool_handler)
+
+    @staticmethod
+    def eq(a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        if a.lower == a.upper and b.lower == b.upper and a.lower == b.lower:
+            return ValueRanges.wrap(sympy.true)
+        elif a.lower > b.upper or b.lower > a.upper:  # ranges disjoint
+            return ValueRanges.wrap(sympy.false)
+        return ValueRanges(sympy.false, sympy.true)
+
+    @classmethod
+    def ne(cls, a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        return cls.not_(cls.eq(a, b))
+
+    @staticmethod
+    def lt(a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        if a.upper < b.lower:
+            return ValueRanges.wrap(sympy.true)
+        elif a.lower >= b.upper:
+            return ValueRanges.wrap(sympy.false)
+        return ValueRanges(sympy.false, sympy.true)
+
+    @classmethod
+    def gt(cls, a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        if a.lower > b.upper:
+            return ValueRanges.wrap(sympy.true)
+        elif a.upper <= b.lower:
+            return ValueRanges.wrap(sympy.false)
+        return ValueRanges(sympy.false, sympy.true)
+
+    @staticmethod
+    def le(a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        if a.upper <= b.lower:
+            return ValueRanges.wrap(sympy.true)
+        elif a.lower > b.upper:
+            return ValueRanges.wrap(sympy.false)
+        return ValueRanges(sympy.false, sympy.true)
+
+    @classmethod
+    def ge(cls, a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        if a.lower >= b.upper:
+            return ValueRanges.wrap(sympy.true)
+        elif a.upper < b.lower:
+            return ValueRanges.wrap(sympy.false)
+        return ValueRanges(sympy.false, sympy.true)
+
+    @staticmethod
+    def not_(a):
+        a = ValueRanges.wrap(a)
+        if a.lower == a.upper:
+            return ValueRanges(sympy.Not(a))
+        return ValueRanges(sympy.false, sympy.true)
 
     @staticmethod
     def bool_handler(*args, **kwargs):

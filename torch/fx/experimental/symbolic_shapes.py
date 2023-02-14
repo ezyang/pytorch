@@ -17,6 +17,7 @@ import logging
 # NB: The sym_* functions are used via getattr() and must be imported here.
 from torch import SymInt, SymFloat, SymBool, sym_not, sym_float, sym_max, sym_min  # noqa: F401
 from torch._guards import ShapeGuard, Source
+from torch.utils._sympy.value_ranges import ValueRanges, ValueRangeAnalysis
 
 SymTypes = (SymInt, SymFloat, SymBool)
 
@@ -128,6 +129,20 @@ def guard_scalar(a):
         return guard_float(a)
     else:
         raise AssertionError(f"unrecognized scalar {a}")
+
+# inclusive both ways
+def constrain_range(a, *, min, max=math.inf):
+    if not isinstance(a, SymInt):
+        assert min <= a <= max
+        return
+    if isinstance(a.node.expr, sympy.Integer):
+        assert min <= int(a.node.expr) <= max
+        return
+    assert isinstance(a.node.expr, sympy.Symbol), "constraining non-Symbols NYI"
+    r = a.node.shape_env.var_to_range[a.node.expr]
+    a.node.shape_env.var_to_range[a.node.expr] = ValueRanges(builtins.max(r.lower, min), builtins.min(r.upper, max))
+    return
+
 
 def guard_bool(a):
     if isinstance(a, SymBool):
@@ -579,12 +594,12 @@ reflectable_magic_methods = {
     'add': lambda a, b: a + b,
     'sub': lambda a, b: a - b,
     'mul': lambda a, b: a * b,
-    'mod': lambda a, b: a % b,
+    'mod': lambda a, b: a % b,  # no value ranges
     'pow': lambda a, b: Pow(a, b),
     'and': lambda a, b: a & b,
     'or': lambda a, b: a | b,
     'truediv': lambda a, b: TrueDiv(a, b),
-    'floordiv': lambda a, b: FloorDiv(a, b),
+    'floordiv': lambda a, b: FloorDiv(a, b),  # just div
 }
 
 
@@ -605,8 +620,8 @@ magic_methods = {
     'sym_float': lambda a: a,  # Cannot use sympy.Float(a) here, coz it expects python literals
     'ceil': lambda a: sympy.ceiling(a),
     'neg': lambda a: -a,
-    'sym_min': lambda a, b: sympy.Min(a, b),
-    'sym_max': lambda a, b: sympy.Max(a, b),
+    'sym_min': lambda a, b: sympy.Min(a, b),  # minimum
+    'sym_max': lambda a, b: sympy.Max(a, b),  # maximum
     'sym_sqrt': lambda a: sympy.sqrt(a),
 }
 
@@ -774,6 +789,23 @@ SYMPY_INTERP = {
     'IsNonOverlappingAndDenseIndicator': eval_is_non_overlapping_and_dense,
     'floor': math.floor,
     'ceiling': math.ceil,
+}
+
+SYMPY_VALUE_RANGE_INTERP = {
+    'Eq': ValueRangeAnalysis.eq,
+    'Ne': ValueRangeAnalysis.ne,
+    'Gt': ValueRangeAnalysis.gt,
+    'Lt': ValueRangeAnalysis.lt,
+    'Le': ValueRangeAnalysis.le,
+    'Ge': ValueRangeAnalysis.ge,
+    'Not': ValueRangeAnalysis.not_,
+    'Min': ValueRangeAnalysis.minimum,
+    'Max': ValueRangeAnalysis.maximum,
+    'Mod': ValueRangeAnalysis.default_handler,
+    'FloorDiv': ValueRangeAnalysis.div,
+    'TrueDiv': ValueRangeAnalysis.truediv,
+    'floor': ValueRangeAnalysis.floor,
+    'ceiling': ValueRangeAnalysis.ceil,
 }
 
 always_float_magic_methods = {"truediv", "sym_float", "sym_sqrt", "pow"}
@@ -1078,6 +1110,11 @@ class ShapeEnv:
         # Maps symbolic ints to their original concrete values
         # Currently populated from tensors
         self.var_to_val: Dict["sympy.Symbol", "sympy.Integer"] = {}
+        # Maps symbolic ints to their min/max range.  These ranges
+        # are conservative: the int MUST fall in the range, but the
+        # range may contain ints which may not actually appear in
+        # practice
+        self.var_to_range: Dict["sympy.Symbol", ValueRanges] = {}
         # Maps from sympy ints to expressions representing them
         # Populated from equality guards (i.e. a.shape[0] == b.shape[0])
         self.replacements: Dict["sympy.Symbol", "sympy.Expr"] = {}  #
@@ -1186,11 +1223,13 @@ class ShapeEnv:
     def create_unbacked_symfloat(self):
         symbol = Symbol(f"f{next(self.unbacked_symfloat_counter)}")
         symbol.stack = ''.join(traceback.format_list(traceback.extract_stack()[:-1]))
+        self.var_to_range[symbol] = ValueRanges(-math.inf, math.inf)
         return SymFloat(SymNode(symbol, self, float, None))
 
     def create_unbacked_symint(self):
         symbol = Symbol(f"i{next(self.unbacked_symint_counter)}", integer=True)
         symbol.stack = ''.join(traceback.format_list(traceback.extract_stack()[:-1]))
+        self.var_to_range[symbol] = ValueRanges(-math.inf, math.inf)
         return SymInt(SymNode(symbol, self, int, None))
 
     # This is guaranteed to return a symbol or its negation is a sympy.Symbol,
@@ -1215,6 +1254,7 @@ class ShapeEnv:
             sympy_expr = Symbol(f"s{len(self.var_to_val)}", positive=True, integer=True)
             self.var_to_val[sympy_expr] = sympy.Integer(val)
             self.val_to_var[val] = sympy_expr
+            self.var_to_range[sympy_expr] = ValueRanges(2, math.inf)
 
         # This implements duck-shaping: input sizes that match are assigned
         # the same symint
@@ -1503,6 +1543,16 @@ class ShapeEnv:
             new_expr = new_expr.subs(self.expr_subs[s])
         if len(list(new_expr.free_symbols)) == 0:
             return new_expr
+
+        # Check if the range can solve it statically
+        range_env = {
+            str(s): self.var_to_range[s]
+            for s in expr.free_symbols
+        }
+        s_expr = StrPrinter().doprint(expr)
+        out = eval(s_expr, SYMPY_VALUE_RANGE_INTERP, range_env)
+        if out.lower == out.upper:
+            return out.lower
 
         return None
 
