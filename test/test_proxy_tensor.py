@@ -2,6 +2,7 @@
 
 from torch.testing._internal.common_utils import TestCase, run_tests, IS_WINDOWS, xfail_inherited_tests
 import torch
+import torch.nn.functional as F
 import unittest
 import warnings
 import operator
@@ -1016,6 +1017,17 @@ def forward(self, crop_camera_1, mask_1):
     view_1 = torch.ops.aten.view.default(bmm_1, [sym_size, 3, 3]);  bmm_1 = sym_size = None
     index_put_ = torch.ops.aten.index_put_.default(crop_camera_1, [mask_1], view_1);  crop_camera_1 = mask_1 = view_1 = None
     return None""")
+
+    def test_unbacked_batch_conv(self):
+        def f(img, weight, mask):
+            img = img[mask]
+            return F.conv2d(img, weight)
+
+        r = str(make_fx(f, tracing_mode="symbolic")(
+            torch.randn(16, 72, 32, 32),
+            torch.randn(36, 72, 4, 4),
+            torch.randint(0, 2, (16,), dtype=torch.bool)
+        ).code).strip()
 
     def test_boolean_index(self):
         def f(images, handedness, valid):

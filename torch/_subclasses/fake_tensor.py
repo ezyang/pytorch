@@ -516,7 +516,11 @@ def conv(fake_mode, func, *args, **kwargs):
     with fake_mode:
         # if the input is unsqueezed is done in Convolution.cpp we get segfault
         k = kwargs["weight"].ndim
-        if k == 3 and not kwargs["input"].is_mkldnn and not kwargs["input"].is_xpu:
+        batch = kwargs["input"].shape[0]
+        if isinstance(batch, torch.SymInt) and not batch.node.has_hint():
+            # This is wrong but idgaf
+            mem_fmt = None
+        elif k == 3 and not kwargs["input"].is_mkldnn and not kwargs["input"].is_xpu:
             mem_fmt = None
         else:
             if func is aten.convolution.default:
