@@ -100,7 +100,8 @@ def get_proxy_slot(obj, tracer, default=no_default, transform=lambda x: x):
     return transform(tracker[obj])
 
 def snapshot_fake(val):
-    return val.detach()
+    return val
+    # return val.detach()
 
 def unwrap_proxy(proxy_mode, e):
     if isinstance(e, torch.Tensor):

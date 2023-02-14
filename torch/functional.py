@@ -111,7 +111,7 @@ def broadcast_shapes(*shapes):
                 s = len(shape)
                 if max_len < s:
                     max_len = s
-        result = [1] * max_len
+        result = [None] * max_len
         for shape in shapes:
             if isinstance(shape, int):
                 shape = (shape,)
@@ -120,11 +120,21 @@ def broadcast_shapes(*shapes):
                     if shape[i] < 0:
                         raise RuntimeError("Trying to create tensor with negative dimension ({}): ({})"
                                            .format(shape[i], shape[i]))
-                    if shape[i] == 1 or shape[i] == result[i]:
-                        continue
-                    if result[i] != 1:
+                    from torch.fx.experimental.symbolic_shapes import definitely_true
+                    if result[i] is None:
+                        result[i] = shape[i]
+                    elif definitely_true(shape[i] == 1):
+                        pass
+                    elif definitely_true(result[i] == 1):
+                        result[i] = shape[i]
+                    elif shape[i] == result[i]:
+                        pass
+                    elif shape[i] == 1:
+                        pass
+                    elif result[i] == 1:
+                        result[i] = shape[i]
+                    else:
                         raise RuntimeError("Shape mismatch: objects cannot be broadcast to a single shape")
-                    result[i] = shape[i]
             else:
                 raise RuntimeError("Input shapes should be of type ints, a tuple of ints, or a list of ints, got ", shape)
         return torch.Size(result)

@@ -1559,12 +1559,15 @@ class ShapeEnv:
             for s in expr.free_symbols
         )
         return GuardOnDataDependentSymNode(
-            f"\n\n{accesses}\n"
-            "GuardOnDataDependentSymNode: It appears that you're trying to get "
+            # TODO: Hypothetically this is useful but it turns out this is
+            # usually clear from context
+            # f"\n\n{accesses}\n"
+            # "GuardOnDataDependentSymNode: "
+            "It appears that you're trying to get "
             "a value out of symbolic int/float "
             "whose value is data-dependent (and thus we do not know the true value.)  "
-            f"The expression we were trying to evaluate is {expr}.  "
-            "Scroll up to see where each of these data-dependent accesses originally occurred."
+            f"The expression we were trying to evaluate is {expr}."
+            # "  Scroll up to see where each of these data-dependent accesses originally occurred."
             # TODO: Help text about how to use our runtime tests to fix this
             # problem
         )

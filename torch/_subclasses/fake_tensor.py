@@ -428,6 +428,9 @@ def nonzero(fake_mode, func, arg):
     fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz >= 0).node.expr, True))
     fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz < 0).node.expr, False))
     fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz == -1).node.expr, False))
+    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((nnz != -1).node.expr, True))
+    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((3*nnz == -1).node.expr, False))
+    fake_mode.shape_env.expr_subs[nnz.node.expr].append(((3*nnz >= 0).node.expr, True))
 
     return arg.new_empty((nnz, arg.dim()), dtype=torch.int64)
 
