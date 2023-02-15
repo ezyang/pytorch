@@ -1546,10 +1546,10 @@ class ShapeEnv:
 
         # Check if the range can solve it statically
         range_env = {
-            str(s): self.var_to_range[s]
-            for s in expr.free_symbols
+            (str(s) if s not in self.var_to_val else f"shape_{idx}"): self.var_to_range[s]
+            for idx, s in enumerate(symbols)
         }
-        s_expr = StrPrinter().doprint(expr)
+        s_expr = StrPrinter().doprint(new_expr)
         out = eval(s_expr, SYMPY_VALUE_RANGE_INTERP, range_env)
         if out.lower == out.upper:
             return out.lower
@@ -1598,6 +1598,16 @@ class ShapeEnv:
                 result_expr = result_expr.subs(self.expr_subs[s])
             if len(list(result_expr.free_symbols)) == 0:
                 return result_expr
+
+            range_env = {
+                str(s): self.var_to_range[s]
+                for s in result_expr.free_symbols
+            }
+            s_expr = StrPrinter().doprint(result_expr)
+            out = eval(s_expr, SYMPY_VALUE_RANGE_INTERP, range_env)
+            if out.lower == out.upper:
+                return out.lower
+
             raise self._make_data_dependent_error(result_expr)
         return result_expr
 

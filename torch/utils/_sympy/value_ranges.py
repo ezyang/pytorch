@@ -14,6 +14,16 @@ class ValueRanges:
     lower: Union[sympy.Expr, sympy.Number, int, float, bool]
     upper: Union[sympy.Expr, sympy.Number, int, float, bool]
 
+    def __post_init__(self):
+        if isinstance(self.lower, float):
+            assert not math.isnan(self.lower)
+        if isinstance(self.upper, float):
+            assert not math.isnan(self.upper)
+        assert not self.lower == sympy.nan
+        assert not self.upper == sympy.nan
+        assert self.lower != sympy.oo
+        assert self.upper != -sympy.oo
+
     def __contains__(self, x):
         # TODO This needs to be generalised if lower/upper are sympy.Expr
         assert not isinstance(x, sympy.Expr)
@@ -83,6 +93,36 @@ class ValueRanges:
     def __mul__(self, other):
         return ValueRangeAnalysis.mul(self, other)
 
+    def __floordiv__(self, other):
+        return ValueRangeAnalysis.div(self, other)
+
+    def __truediv__(self, other):
+        return ValueRangeAnalysis.truediv(self, other)
+
+    def __radd__(self, other):
+        return ValueRangeAnalysis.add(other, self)
+
+    def __rsub__(self, other):
+        return ValueRangeAnalysis.sub(other, self)
+
+    def __rmul__(self, other):
+        return ValueRangeAnalysis.mul(other, self)
+
+    def __rfloordiv__(self, other):
+        return ValueRangeAnalysis.div(other, self)
+
+    def __rtruediv__(self, other):
+        return ValueRangeAnalysis.truediv(other, self)
+
+    def __pow__(self, other):
+        return ValueRangeAnalysis.pow(self, other)
+
+    def __and__(self, other):
+        return ValueRangeAnalysis.and_(self, other)
+
+    def __or__(self, other):
+        return ValueRangeAnalysis.or_(self, other)
+
     def __neg__(self):
         return ValueRangeAnalysis.neg(self)
 
@@ -112,6 +152,28 @@ class ValueRangeAnalysis:
         )
         for op in boolean_operators:
             setattr(self, op, self.bool_handler)
+
+    @staticmethod
+    def or_(a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        if a.lower or b.lower:
+            return ValueRanges.wrap(sympy.true)
+        elif a.lower == a.upper and b.lower == b.upper:
+            return ValueRanges.wrap(sympy.Or(a.lower, b.lower))
+        else:
+            return ValueRanges(sympy.false, sympy.true)
+
+    @staticmethod
+    def and_(a, b):
+        a = ValueRanges.wrap(a)
+        b = ValueRanges.wrap(b)
+        if not a.upper or not b.upper:
+            return ValueRanges.wrap(sympy.false)
+        elif a.lower == a.upper and b.lower == b.upper:
+            return ValueRanges.wrap(sympy.And(a.lower, b.lower))
+        else:
+            return ValueRanges(sympy.false, sympy.true)
 
     @staticmethod
     def eq(a, b):
@@ -173,7 +235,7 @@ class ValueRangeAnalysis:
     def not_(a):
         a = ValueRanges.wrap(a)
         if a.lower == a.upper:
-            return ValueRanges(sympy.Not(a))
+            return ValueRanges.wrap(sympy.Not(a.lower))
         return ValueRanges(sympy.false, sympy.true)
 
     @staticmethod
@@ -289,8 +351,8 @@ class ValueRangeAnalysis:
     def sqrt(x):
         return ValueRanges.increasing_map(x, sympy.sqrt)
 
-    @staticmethod
-    def pow(a, b):
+    @classmethod
+    def pow(cls, a, b):
         def is_integer(val):
             return (
                 isinstance(val, int)
@@ -305,6 +367,11 @@ class ValueRangeAnalysis:
             return ValueRanges(-math.inf, math.inf)
         elif 0 in a and b.lower <= 0:
             return ValueRanges(-math.inf, math.inf)
+        elif b.lower == b.upper:
+            i = 1
+            for _ in range(b.lower):
+                i *= a
+            return i
         return ValueRanges.coordinatewise_monotone_map(a, b, operator.pow)
 
     @staticmethod
