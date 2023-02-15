@@ -33,6 +33,7 @@ from torch._prims_common.wrappers import backwards_not_supported
 from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode
 from torch.overrides import handle_torch_function, has_torch_function
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+from torch.fx.experimental.symbolic_shapes import definitely_true
 
 prim = torch.library.Library("prims", "DEF")
 prim_impl = torch.library.Library("prims", "IMPL", "CompositeExplicitAutograd")
@@ -1221,7 +1222,8 @@ def _broadcast_in_dim_meta(
 
     # shape must be broadcastable to
     for idx, new_idx in enumerate(broadcast_dimensions):
-        assert a.shape[idx] == 1 or a.shape[idx] == shape[new_idx]
+        # TODO: do this with fuzzy_or
+        assert definitely_true(a.shape[idx] == 1) or a.shape[idx] == shape[new_idx] or a.shape[idx] == 1
 
     new_strides = []
     original_idx = 0
