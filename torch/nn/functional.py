@@ -2412,8 +2412,8 @@ def _verify_batch_size(size: List[int]) -> None:
     size_prods = size[0]
     for i in range(len(size) - 2):
         size_prods *= size[i + 2]
-    if size_prods == 1:
-        raise ValueError("Expected more than 1 value per channel when training, got input size {}".format(size))
+    #if size_prods == 1:
+    #    raise ValueError("Expected more than 1 value per channel when training, got input size {}".format(size))
 
 
 def batch_norm(

@@ -330,7 +330,13 @@ class ValueRangeAnalysis:
 
     @staticmethod
     def mul(a, b):
-        return ValueRanges.coordinatewise_monotone_map(a, b, operator.mul)
+        def safe_mul(a, b):
+            if a == 0:
+                return 0
+            elif b == 0:
+                return 0
+            return a * b
+        return ValueRanges.coordinatewise_monotone_map(a, b, safe_mul)
 
     @staticmethod
     def sub(a, b):
