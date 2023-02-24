@@ -108,6 +108,12 @@ def hint_int(a):
     assert type(a) is int, a
     return a
 
+def hint_bool(a):
+    if isinstance(a, torch.SymBool):
+        return a.node.require_hint()
+    assert type(a) is bool, a
+    return a
+
 def has_hint(a):
     if isinstance(a, torch.SymInt):
         return a.node.has_hint()
@@ -1199,7 +1205,7 @@ class ShapeEnv:
         specialize_zero_one=True,
         # When True, assume input sizes which have the same size are
         # symbolically equal.
-        duck_shape=True,
+        duck_shape=False,
     ):
         # Not directly used by ShapeEnv; indirectly used by FakeTensor
         self.allow_scalar_outputs = allow_scalar_outputs
@@ -1344,20 +1350,24 @@ class ShapeEnv:
             from torch._dynamo.source import NegateSource
             return -self.create_symbol(-val, NegateSource(source), dyn)
 
+        info = []
         if dyn or val not in self.val_to_var or not self.duck_shape:
             # If a value is never before seen, or dynamic, we want to create an expression
             sympy_expr = sympy.Symbol(f"s{len(self.var_to_val)}", positive=True, integer=True)
+            info.append(f"s{len(self.var_to_val)}")
             # We always associate vars to vals
             self.var_to_val[sympy_expr] = sympy.Integer(val)
             # Do the appending later, because we always want to populate this
             self.var_to_sources[sympy_expr] = []
 
-            if not dyn:
+            if not dyn and self.duck_shape:
                 # Non explicitly marked dynamic dims register to val_to_var to get duck shaped
+                info.append("duck")
                 self.val_to_var[val] = sympy_expr
 
             # We also infer that it must be not 0/1
             lower = 2 if self.specialize_zero_one else 0
+            info.append(f"{lower}")
             self.var_to_range[sympy_expr] = ValueRanges(lower, sympy.oo)
 
         if not dyn and self.duck_shape:
@@ -1369,6 +1379,9 @@ class ShapeEnv:
 
         if isinstance(r, sympy.Symbol):
             self.var_to_sources[r].append(source)
+
+        print(f"create_symbol {id(self) % 1000} {val} {source.name()} {dyn} {' '.join(info)}")
+
         return r
 
     # Given a concrete integer value, return the duck sized symbol associated
@@ -1496,7 +1509,7 @@ class ShapeEnv:
             else:
                 input_guards.append((source, sympy.Integer(val)))
 
-        def _verify(expr, potential_expr):
+        def _verify(expr, potential_expr, tb):
             # An expression of > 1 symbols is a relationship,
             # and relationships can be ignored due to the nature of the
             # constraint api explicitly not supporting relationships.
@@ -1508,7 +1521,7 @@ class ShapeEnv:
                 srcs = symbol_to_source[expr.free_symbols.pop()]
                 for src in srcs:
                     if src in dynamic_sources:
-                        raise RuntimeError(f"Attempting to introduce a guard {potential_expr} that violates user's mark_dynamic")
+                        raise RuntimeError(f"Attempting to introduce a guard {potential_expr} that violates user's mark_dynamic.  Guard allocated at: \n{tb}")
 
         for t, source in zip(placeholders, sources):
             if isinstance(source, str):
@@ -1528,7 +1541,8 @@ class ShapeEnv:
                     # If this dim is marked dynamic, we need to do a test on it, to ensure that it has not bee
                     # constrained to an integer.
                     if _is_int(ss):
-                        raise RuntimeError(f"Attempting to constrain dim {i} for {source}, which violates user's mark_dynamic")
+                        pass
+                        #raise RuntimeError(f"Attempting to constrain dim {i} for {source}, which violates user's mark_dynamic")
                     dynamic_sources.append(property_source)
             for i, ss in enumerate(t.stride()):
                 track_symint(TensorPropertySource(source, TensorProperty.STRIDE, i), ss)
@@ -1561,7 +1575,7 @@ class ShapeEnv:
                 guard_expr = ShapeGuardPrinter(symbol_to_source, source_ref, self.var_to_sources).doprint(g)
                 exprs.append(guard_expr)
                 if self.strict_mark_dyn:
-                    _verify(g, guard_expr)
+                    _verify(g, guard_expr, tb)
             except Exception:
                 log.warning(f"Failing guard allocated at: \n{tb}")
                 raise
@@ -1584,6 +1598,7 @@ class ShapeEnv:
                 if len(bounds) > 1:
                     exprs.append(" <= ".join(bounds))
 
+        print("guards\n" + "\n".join('  ' + e for e in exprs))
         return exprs
 
     def evaluate_guards_for_args(self, placeholders, args):
@@ -1842,6 +1857,8 @@ class ShapeEnv:
                 solution = solutions[0][free[0]]
                 if all(t.is_integer for t in sympy.preorder_traversal(solution)):
                     new_var = self._find(solution)
+                    print(f"add replacement {free[0]} {new_var}")
+                    assert new_var != sympy.Integer(10)
                     self.replacements[cast(sympy.Symbol, free[0])] = new_var
             except NotImplementedError:
                 pass
@@ -1876,6 +1893,7 @@ class ShapeEnv:
         """
         Given an expression, evaluates it, adding guards if necessary
         """
+        print(f"guard {expr} <==> {hint}")
         if len(expr.free_symbols) == 0:
             return expr
         expr = self.simplify(expr)

@@ -324,22 +324,24 @@ def _broadcast_shapes(*_shapes):
     common_shape = [
         1,
     ] * reduce(max, (len(shape) for shape in shapes))
+    from torch.fx.experimental.symbolic_shapes import hint_bool
     for arg_idx, shape in enumerate(shapes):
         for idx in range(-1, -1 - len(shape), -1):
             if common_shape[idx] == 1:
-                if shape[idx] < 0:
+                if hint_bool(shape[idx] < 0):
                     raise ValueError(
                         "Attempting to broadcast a dimension with negative length!"
                     )
                 common_shape[idx] = shape[idx]
             elif shape[idx] != 1:
-                if common_shape[idx] != shape[idx]:
+                if hint_bool(common_shape[idx] != shape[idx]):
                     raise RuntimeError(
                         f"Attempting to broadcast a dimension of length {shape[idx]} at {idx}! "
                         f"Mismatching argument at index {arg_idx} had {shape}; but expected shape "
                         f"should be broadcastable to {common_shape}"
                     )
 
+    print(f"common_shape {common_shape}")
     return common_shape
 
 
