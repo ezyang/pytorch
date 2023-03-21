@@ -224,6 +224,8 @@ def fetch_sym_proxy(tracer):
         n = e.node
         if n.constant is not None:
             return n.constant
+        elif len(n.expr.free_symbols) == 0:
+            return n.hint
         else:
             # NB: we REQUIRE all symints to be tracked
             return get_proxy_slot(n, tracer)()
@@ -585,11 +587,15 @@ class ProxySymDispatchMode(SymDispatchMode):
         # were symbolic) and it is no longer necessary to trace the
         # computation.  This could occur if func triggered some guards.
         if isinstance(out, py_sym_types):
-            # Delays tracing out the proxies on this op until we actually need it
-            p_out_thunk = thunkify(self._compute_proxy, func=func, args=args, out=out)
-            set_proxy_slot(out.node, self.tracer, p_out_thunk)
-
-        return out
+            if len(out.node.expr.free_symbols) > 0:
+                # Delays tracing out the proxies on this op until we actually need it
+                p_out_thunk = thunkify(self._compute_proxy, func=func, args=args, out=out)
+                set_proxy_slot(out.node, self.tracer, p_out_thunk)
+                return out
+            else:
+                return out.node.hint
+        else:
+            return out
 
 
 # TODO: I'm not sure what the point of this class is; you can just

@@ -327,7 +327,11 @@ class OpOverload(OperatorBase):
         )
 
     def __call__(self, *args, **kwargs):
-        return self._op(*args, **kwargs or {})
+        try:
+            return self._op(*args, **kwargs or {})
+        except Exception as e:
+            #breakpoint()
+            raise
 
     def __hash__(self):
         return hash(self._op)

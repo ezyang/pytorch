@@ -2620,7 +2620,8 @@ def create_aot_dispatcher_function(
             shape_env = fake_mode.shape_env
             break
     else:
-        shape_env = ShapeEnv() if aot_config.dynamic_shapes else None
+        import torch._dynamo.config as dynamo_config
+        shape_env = ShapeEnv(assume_static_by_default=dynamo_config.assume_static_by_default) if aot_config.dynamic_shapes else None
         fake_mode = (
             FakeTensorMode(shape_env=shape_env)
             if config.use_fake_tensor
@@ -2653,7 +2654,8 @@ def create_aot_dispatcher_function(
                         and config.static_weight_shapes
                     ):
                         return fake_mode.from_tensor(x, static_shapes=True)
-                    return fake_mode.from_tensor(x, static_shapes=False)
+                    r = fake_mode.from_tensor(x, static_shapes=False)
+                    print("init", r.size())
 
                 return [convert(idx, x) for idx, x in enumerate(flat_args)]
             else:

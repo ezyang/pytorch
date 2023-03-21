@@ -1370,6 +1370,7 @@ class ShapeEnv:
         if dyn or val not in self.val_to_var or not self.duck_shape:
             # If a value is never before seen, or dynamic, we want to create an expression
             sympy_expr = sympy.Symbol(f"s{len(self.var_to_val)}", positive=True, integer=True)
+            log.info(f"Allocating {sympy_expr}={val} for {source.name()}")
             # We always associate vars to vals
             self.var_to_val[sympy_expr] = sympy.Integer(val)
             # Do the appending later, because we always want to populate this
@@ -1836,7 +1837,7 @@ class ShapeEnv:
             # Thus to avoid duplication, checking whether a is in self.replacements isn't enough; if it is,
             # it must not already map to `expr`. Fortunately this check is cheap because `expr` is a constant.
             if a not in self.replacements or expr != self.replacements[a]:
-                log.warning(f"Specializing {self.var_to_sources[a][0].name()} to {expr}")
+                log.info(f"Specializing {self.var_to_sources[a][0].name()} to {expr}")
                 log.debug("SPECIALIZATION", stack_info=True)
         self.replacements[a] = expr
 
@@ -1925,18 +1926,23 @@ class ShapeEnv:
     def _add_guard(self, expr: "sympy.Expr") -> None:
         stack = get_debugging_stack()
         guard = ShapeGuard(expr, stack)
-        if torch._dynamo.config.print_guards:
-            if log.level <= logging.WARNING:
-                # reusing flag that prints guards
-                frame_summaries = TracingContext.get().frame_summary_stack
-                # frame_summaries describes a stack of functions
-                # TODO(avik): It would be better to describe a stack of function calls instead
-                current_loc = TracingContext.get().loc_in_frame
-                # current_loc describes a line in the current frame
-                user_stack = ''.join(traceback.format_list([*frame_summaries, current_loc]))
-                expr = LoggingShapeGuardPrinter(self.var_to_sources).doprint(expr)
-                log.warning(f"Adding shape guard {expr} at \n{user_stack}")
-            log.debug("SHAPE GUARD", stack_info=True)
+        frame = traceback.extract_stack()[-6]
+        import os.path
+        log.info(f"Adding shape guard {expr} from {frame.name} at {os.path.relpath(frame.filename)}:{frame.lineno}")
+        """
+        if log.level <= logging.DEBUG:
+            # reusing flag that prints guards
+            # TODO: TracingContext.get() is None sometimes
+            frame_summaries = TracingContext.get().frame_summary_stack
+            # frame_summaries describes a stack of functions
+            # TODO(avik): It would be better to describe a stack of function calls instead
+            current_loc = TracingContext.get().loc_in_frame
+            # current_loc describes a line in the current frame
+            user_stack = ''.join(traceback.format_list([*frame_summaries, current_loc]))
+            expr = LoggingShapeGuardPrinter(self.var_to_sources).doprint(expr)
+            log.debug(f"Adding shape guard {expr} at \n{user_stack}")
+        """
+        log.debug("SHAPE GUARD", stack_info=True)
         self.guards.append(guard)
 
     @lru_cache(256)
