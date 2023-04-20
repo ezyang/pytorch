@@ -186,6 +186,8 @@ class FakeTensorConverter:
     def __init__(self):
         self.meta_converter = MetaConverter()
 
+        self.source_map = {}
+
         # map from to storage to corresponding constant tensors
         self.constant_storage_mapping = {}
 
@@ -257,6 +259,7 @@ class FakeTensorConverter:
         maybe_memo = self._get_memo(t)
         if maybe_memo is not None:
             return maybe_memo
+        # log.info("0x%x from_real_tensor 0x%x from %s", id(self), id(t), source.name() if source is not None else None)
         existing_device = t.device
         # not yet supported in metatensors
         if t.is_quantized:

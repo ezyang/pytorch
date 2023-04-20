@@ -1,4 +1,5 @@
 import contextlib
+import logging
 import warnings
 import weakref
 from typing import ContextManager, List, Optional
@@ -10,6 +11,8 @@ from torch.multiprocessing.reductions import StorageWeakRef
 from torch.utils.weak import WeakIdRef
 
 DimList = List
+
+log = logging.getLogger(__name__)
 
 
 def safe_is_leaf(t):
@@ -175,7 +178,9 @@ class MetaConverter:
             from torch._dynamo.source import ConstantSource
 
             # TODO: make a dedicated UnknownSource for this?
-            source = ConstantSource(f"__unknown_tensor{len(self.tensor_memo)}")
+            name = f"__meta_utils_unknown_tensor_{len(self.tensor_memo)}"
+            source = ConstantSource(name)
+            log.info("missing source info for %s", name, stack_info=True)
 
         # This indicates you set no_dispatch() before calling into this
         # function.  This is an error: we may be creating fake tensors and
@@ -527,18 +532,19 @@ class MetaConverter:
                 ctx = contextlib.nullcontext()
                 if ignore_subclass:
                     ctx = torch._C.DisableTorchFunctionSubclass()
+                def paramify(r):
+                    if type(t) is torch.nn.Parameter:
+                        r = torch.nn.Parameter(r, requires_grad=r.requires_grad)
+                    return r
                 with ctx:
                     r = self.meta_tensor(
                         t,
                         shape_env=shape_env,
-                        callback=callback,
+                        callback=lambda t: paramify(callback(t)),
                         source=source,
                         dynamic_dims=dynamic_dims,
                         constraint_dims=constraint_dims,
                     )
-                # TODO: this is suspicious, now that we have callback argument
-                if type(t) is torch.nn.Parameter:
-                    r = torch.nn.Parameter(r, requires_grad=r.requires_grad)
                 return r
         elif torch.overrides.is_tensor_like(t):
             # Blindly converting tensor subclasses to meta can cause

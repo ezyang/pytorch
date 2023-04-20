@@ -26,7 +26,7 @@ from torch._logging import getArtifactLogger
 from torch._subclasses import FakeTensor, FakeTensorMode
 from torch.fx import immutable_collections, Interpreter
 from torch.fx.experimental.proxy_tensor import is_sym_node, py_sym_types
-from torch.fx.experimental.symbolic_shapes import ShapeEnv
+from torch.fx.experimental.symbolic_shapes import ShapeEnv, fx_placeholder_vals
 from torch.multiprocessing.reductions import StorageWeakRef
 from torch.nn.utils import stateless
 from torch._decomp.decompositions_for_rng import PhiloxStateTracker, rng_decompositions, PhiloxTotalOffsets
@@ -2703,7 +2703,7 @@ def aot_dispatch_autograd(flat_fn, flat_args: List[Any], aot_config: AOTConfig, 
                     context = disable_autocast_manager if disable_amp else nullcontext
                     with tracing(saved_context), context(), track_graph_compiling(aot_config, "backward"):
                         CompiledFunction.compiled_bw = aot_config.bw_compiler(
-                            bw_module, all_args
+                            bw_module, fx_placeholder_vals(bw_module)
                         )
 
                 ctx.maybe_clear_saved_tensors()
@@ -2853,14 +2853,17 @@ def create_aot_dispatcher_function(
                 if isinstance(x, FakeTensor):
                     assert x.fake_mode is fake_mode
                     return x
-                # TODO: Ensure that this codepath is never exercised from
-                # Dynamo
+                # This codepath gets hit for parameters, which are passed as
+                # real tensors to AOTAutograd
+                source = None
+                if aot_config.aot_autograd_arg_pos_to_source is not None:
+                    source = aot_config.aot_autograd_arg_pos_to_source[idx]
                 if (
                     idx < aot_config.num_params_buffers
                     and config.static_weight_shapes
                 ):
-                    return fake_mode.from_tensor(x, static_shapes=True)
-                return fake_mode.from_tensor(x, static_shapes=False)
+                    return fake_mode.from_tensor(x, source=source, static_shapes=True)
+                return fake_mode.from_tensor(x, source=source, static_shapes=False)
 
             return [convert(idx, x) for idx, x in enumerate(flat_args)]
 

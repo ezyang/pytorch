@@ -2,6 +2,7 @@ import collections
 import contextlib
 import dataclasses
 import enum
+import logging
 import functools
 import inspect
 import operator
@@ -104,6 +105,9 @@ from .torch import (
     TorchVariable,
 )
 from .user_defined import UserDefinedClassVariable, UserDefinedObjectVariable
+
+
+log = logging.getLogger(__name__)
 
 
 DimList = List
@@ -1179,6 +1183,7 @@ def wrap_to_fake_tensor_and_record(
         if tx.fake_mode.shape_env is not None:
             dynamic_dims = []
             constraint_dims = []
+            #log.info("considering %s %s", source.name(), getattr(e, "_dynamo_dynamic_indices", set()))
             for i in range(e.dim()):
                 # NB: mark dynamic has precedence over static
                 marked_dynamic = i in getattr(e, "_dynamo_dynamic_indices", set())
@@ -1203,6 +1208,7 @@ def wrap_to_fake_tensor_and_record(
                     # NB: We could assert static_shapes is False here, but it
                     # seems better to allow the user to override policy in this
                     # case
+                    log.info("%s.size()[%s] is DYNAMIC", source.name(), i)
                     dynamic = DimDynamic.DYNAMIC
                 elif static_shapes or config.assume_static_by_default or marked_static:
                     dynamic = DimDynamic.STATIC
