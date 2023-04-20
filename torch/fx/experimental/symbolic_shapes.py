@@ -1493,7 +1493,7 @@ class ShapeEnv:
         else:
             env_id = f"{frame_id}.{per_frame_id}"
         self.log = ShapeEnvLoggerAdapter(log, {'envid': env_id})
-        self.log.info("create_env")
+        self.log.info("create_env", stack_info=True)
 
     def _suppress_guards_tls(self):
         return getattr(TLS, "suppress_guards", False)

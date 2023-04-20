@@ -1,10 +1,12 @@
 import copy
 import functools
 import logging
+import itertools
 import os
 import shutil
 import subprocess
 import textwrap
+import tempfile
 import uuid
 from importlib import import_module
 from tempfile import TemporaryFile
@@ -12,6 +14,7 @@ from tempfile import TemporaryFile
 import torch
 import torch.fx as fx
 
+from torch._dynamo.testing import rand_strided
 from torch._dynamo.debug_utils import (
     _cuda_system_info_comment,
     AccuracyError,
@@ -24,6 +27,7 @@ from torch._dynamo.debug_utils import (
     NNModuleToString,
     TEST_REPLACEABLE_COMMENT,
 )
+import torch._prims_common as utils
 
 from .. import config
 
@@ -157,6 +161,94 @@ def wrap_compiler_debug(unconfigured_compiler_fn, compiler_name: str):
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                       REPRO SUPPORT CODE
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+def _stride_or_default(stride, *, shape):
+    return stride if stride is not None else utils.make_contiguous_strides_for(shape)
+
+def _dtype_or_default(dtype):
+    return dtype if dtype is not None else torch.float32
+
+def _device_or_default(device):
+    return device if device is not None else torch.device("cpu")
+
+
+# TODO: Support bundling the entire repro into a zip file for ease of
+# transferring around
+class InputReader:
+    def __init__(self, save_dir=None):
+        # If None, we will generate random data instead
+        self.save_dir = save_dir
+
+    def tensor(self, name, shape, stride=None, *, dtype=None, device=None):
+        stride = _stride_or_default(stride, shape=shape)
+        dtype = _dtype_or_default(dtype)
+        device = _device_or_default(device)
+        if self.save_dir is not None:
+            t = torch.load(os.path.join(self.save_dir, f"{name}.pt"), weights_only=True)
+            if t.stride() != stride:
+                log.warning(f"InputReader stride mismatch: %s != %s", t.stride(), stride)
+            if t.dtype != dtype:
+                log.warning(f"InputReader dtype mismatch: %s != %s", t.dtype, dtype)
+            if t.device != device:
+                log.warning(f"InputReader device mismatch: %s != %s", t.device, device)
+            return t
+        else:
+            # Make up some data since we don't have any
+            return rand_strided(shape, stride, dtype, device)
+
+    def symint(self, name, val):
+        return val
+
+
+# Here is our writer strategy:
+#  1. We will stream all of the inputs to disk
+#  2. You can now deterministically randomize the inputs, or reload
+#     the inputs from disk
+#  3. You can YOLO run the script without the inputs, in which case
+#     we'll fill the inputs with random data and pray
+#  4. We could offer an in process "check if the randomized thing
+#     works too" but this is delicate so we don't do it
+
+class InputWriter:
+    def __init__(self, save_dir):
+        assert save_dir is not None
+        self.save_dir = save_dir
+        self.lines = [
+            "import torch._dynamo.repro.after_aot",
+            f"reader = torch._dynamo.repro.after_aot.InputReader(save_dir={self.save_dir!r})",
+        ]
+        self.counter = itertools.count()
+
+    def _fresh(self):
+        return f"arg{next(self.counter)}"
+
+    def tensor(self, name, t) -> str:
+        torch.save(t, os.path.join(self.save_dir, f"{name}.pt"))
+        maybe_stride = ""
+        if _stride_or_default(t.stride(), shape=t.shape) != t.stride():
+            maybe_stride = f", {tuple(t.stride())}"
+        maybe_dtype = ""
+        if _dtype_or_default(t.dtype) != t.dtype:
+            maybe_dtype = f", dtype={t.dtype!r}"
+        maybe_device = ""
+        if _device_or_default(t.device) != t.device:
+            maybe_device = f", device={t.device!r}"
+        local = self._fresh()
+        self.lines.append(f"{local} = reader.tensor({name!r}, {tuple(t.shape)}{maybe_stride}{maybe_dtype}{maybe_device})")
+        return local
+
+    # TODO: this doesn't actually symint atm
+    def symint(self, name, val) -> str:
+        local = self._fresh()
+        if isinstance(val, torch.SymInt):
+            val = val.node.hint
+        self.lines.append(f"{local} = reader.symint({name!r}, {val!r})")
+        return local
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 #                           DUMP REPROS
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
@@ -204,25 +296,23 @@ from torch.fx.experimental.proxy_tensor import make_fx
 
     model_str += NNModuleToString.convert(gm)
 
-    model_str += "args = []\n"
-
     # get hint shape/stride when dynamic shape enabled
     def hint_if_symint(x):
         return tuple(i.node.hint if isinstance(i, torch.SymInt) else i for i in x)
 
-    for arg in args:
-        if isinstance(arg, int):
-            model_str += f"args.append({arg})\n"
-        elif isinstance(arg, torch.SymInt):
-            model_str += f"args.append({arg.node.hint})  # {arg}\n"
+    writer = InputWriter("/tmp")  # TODO: fix
+    wargs = []
+    for i, arg in enumerate(args):
+        if isinstance(arg, (int, torch.SymInt)):
+            wargs.append(writer.symint(str(arg), arg))
         elif isinstance(arg, torch.Tensor):
-            model_str += (
-                "args.append(rand_strided"
-                + f"{hint_if_symint(arg.shape), hint_if_symint(arg.stride()), arg.dtype, arg.device.type})"
-                + f"  # shape {tuple(arg.shape)}, stride {arg.stride()}\n"
-            )
+            # TODO: improve these names with FQN
+            wargs.append(writer.tensor(f"arg{i}", arg))
         else:
             raise TypeError(f"arg is neither SymInt/int nor torch.Tensor, {arg}")
+
+    model_str += "\n".join(writer.lines) + "\n"
+    model_str += f"args = [{', '.join(wargs)}]\n"
 
     # TODO: fake may be better for performance here
     tracing_mode = "real"

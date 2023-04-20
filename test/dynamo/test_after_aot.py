@@ -1,10 +1,11 @@
 # Owner(s): ["module: dynamo"]
 
 import io
+import tempfile
 
 import torch._dynamo.test_case
 
-from torch._dynamo.repro.after_aot import save_graph_repro
+from torch._dynamo.repro.after_aot import save_graph_repro, InputWriter, InputReader
 
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._traceback import report_compile_source_on_error
@@ -15,11 +16,7 @@ def strip_trailing_whitespace(r):
 
 
 class TestAfterAot(torch._dynamo.test_case.TestCase):
-    def tearDown(self):
-        assert not torch.cuda.is_initialized()
-
     def test_save_graph_repro(self):
-        return
         buf = io.StringIO()
         args = [torch.randn(4)]
 
@@ -58,8 +55,10 @@ class Repro(torch.nn.Module):
         mul = torch.ops.aten.mul.Tensor(x_1, x_1);  x_1 = None
         return (mul,)
 
-args = []
-args.append(rand_strided((4,), (1,), torch.float32, 'cpu'))  # shape (4,), stride (1,)
+import torch._dynamo.repro.after_aot
+reader = torch._dynamo.repro.after_aot.InputReader(save_dir='/tmp')
+arg0 = reader.tensor('arg0', (4,))
+args = [arg0]
 mod = make_fx(Repro(), tracing_mode='real')(*args)
 
 from torch._inductor.compile_fx import compile_fx_inner
@@ -74,6 +73,22 @@ if not same_two_models(mod, compiled, args, only_fwd=True):
         )
         with report_compile_source_on_error():
             exec(r, {"__compile_source__": r})
+
+    def test_dump(self):
+        def test(name, tensor, expected):
+            with tempfile.TemporaryDirectory() as d:
+                writer = InputWriter(d)
+                x = writer.tensor(name, tensor)
+                repr = '\n'.join(writer.lines)
+                self.assertExpectedInline(repr.replace(d, 'TMPDIR'), expected, skip=1)
+                env = {}
+                exec(repr, env)
+                self.assertEqual(env[x], tensor)
+
+        test("arg0", torch.randn(3, 4), """\
+import torch._dynamo.repro.after_aot
+reader = torch._dynamo.repro.after_aot.InputReader(save_dir='TMPDIR')
+arg0 = reader.tensor('arg0', (3, 4))""")
 
 
 if __name__ == "__main__":
