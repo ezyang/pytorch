@@ -868,6 +868,7 @@ def same(
     exact_dtype=True,
     relax_numpy_equality=False,
     log_error=log.error,
+    log_info=lambda *args: None,
 ):
     """Check correctness to see if ref and res match"""
     if fp64_ref is None:
@@ -951,8 +952,10 @@ def same(
                 ref = ref.to(res.dtype)
 
             # First try usual allclose
+            """
             if torch.allclose(ref, res, atol=tol, rtol=tol, equal_nan=equal_nan):
                 return True
+            """
 
             # Check error from fp64 version
             if fp64_ref.dtype == torch.float64:
@@ -974,6 +977,13 @@ def same(
                 passes_test = res_error <= (multiplier * ref_error + tol / 10.0)
                 if not passes_test:
                     log_error(
+                        "RMSE (res-fp64): %.5f, (ref-fp64): %.5f and shape=%s",
+                        res_error,
+                        ref_error,
+                        res.size(),
+                    )
+                else:
+                    log_info(
                         "RMSE (res-fp64): %.5f, (ref-fp64): %.5f and shape=%s",
                         res_error,
                         ref_error,

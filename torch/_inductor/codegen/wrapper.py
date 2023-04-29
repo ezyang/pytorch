@@ -621,7 +621,7 @@ class WrapperCodeGen(CodeGen):
             f"{buffer.get_name()} = empty_strided("
             f"{self.codegen_shape_tuple(shape)}, "
             f"{self.codegen_shape_tuple(stride)}, "
-            f"device='{device.type}', dtype={dtype})"
+            f"device='{device.type}', dtype={dtype}); {buffer.get_name()}.zero_()"
         )
 
     def make_buffer_free(self, buffer):

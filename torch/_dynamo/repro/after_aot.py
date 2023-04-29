@@ -784,6 +784,9 @@ def repro_main(options, mod, args):
                         logged = True
                         pbar.write(f"DIVERGED at {name}: {msg % args}")
 
+                    def log_info(msg, *args):
+                        pbar.write(f"OK at {name}: {msg % args}")
+
                     if not same(
                         r,
                         inductor,
@@ -791,6 +794,7 @@ def repro_main(options, mod, args):
                         tol=torch._dynamo.config.repro_tolerance,
                         equal_nan=True,
                         log_error=log_error,
+                        log_info=log_info,
                     ):
                         assert logged
                     pbar.update(1)
@@ -869,6 +873,13 @@ def run_repro(
         "--save-dir",
         type=str,
         default=save_dir,
+        help="directory where saved inputs live",
+    )
+    parser.add_argument(
+        "--no-save-dir",
+        action='store_const',
+        const=None,
+        dest="save_dir",
         help="directory where saved inputs live",
     )
     parser.add_argument(

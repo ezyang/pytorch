@@ -1,4 +1,5 @@
 import torch.fx as fx
+from torch.multiprocessing.reductions import StorageWeakRef
 from torch._prims_common import is_float_dtype
 import copy
 import torch
@@ -21,6 +22,7 @@ class ConcreteProp(torch.fx.Interpreter):
         super().__init__(mod)
         self.writer = writer
         self.skip_offload = skip_offload
+        self.seen_storages = set()
 
     def run_node(self, n):
         self.pbar.update(1)
@@ -33,9 +35,13 @@ class ConcreteProp(torch.fx.Interpreter):
             if self.writer is None:
                 n.meta['concrete_value'] = r
             else:
-                if not self.skip_offload:
-                    self.writer.write_tensor(os.path.join("eager", name), r)
-                n.meta['concrete_value'] = r.device
+                if StorageWeakRef(r.untyped_storage()) in self.seen_storages:
+                    n.meta['concrete_value'] = None
+                else:
+                    if not self.skip_offload:
+                        self.writer.write_tensor(os.path.join("eager", name), r)
+                    n.meta['concrete_value'] = r.device
+                    self.seen_storages.add(StorageWeakRef(r.untyped_storage()))
         else:
             n.meta['concrete_value'] = is_tuple
 
@@ -71,10 +77,10 @@ def load_tensor_factory(name, *, dtype=None, device=None):
 # inplace modifies node/inps
 def _convert_node_to_placeholder(graph, node, inps):
     if node.op == 'output' or node.op == "placeholder":
-        return
+        return False
 
     if node.op == 'call_function' and node.target is torch.ops.minifier.load_tensor.default:
-        return
+        return False
 
     concrete_val = node.meta.get('concrete_value', None)
 
@@ -86,11 +92,18 @@ def _convert_node_to_placeholder(graph, node, inps):
 
         inps.append(concrete_val)
 
+        return True
+
+    elif concrete_val is None:
+        return False
+
     elif concrete_val is is_tuple:
+        r = False
         for tuple_user in list(node.users):
-            _convert_node_to_placeholder(graph, tuple_user, inps)
+            r = _convert_node_to_placeholder(graph, tuple_user, inps) or r
         # This changes the iteration order
         # graph.erase_node(node)
+        return r
 
     elif isinstance(concrete_val, torch.device):
         node.op = 'call_function'
@@ -99,6 +112,7 @@ def _convert_node_to_placeholder(graph, node, inps):
         # This is required to make sure fake tensor fills in the correct
         # device, otherwise you will segfault
         node.kwargs = {'device': concrete_val}
+        return True
 
 
 def dump_state(fx_g, inps):
@@ -314,14 +328,13 @@ def minifier(
             end_range = min(num_nodes, start_range + granularity)
             for idx in range(start_range, end_range):
                 new_node = list(new_graph.nodes)[idx]
-                if new_node.op not in ['placeholder', 'output'] and not (new_node.op == 'call_function' and new_node.target is torch.ops.minifier.load_tensor.default):
+                r = _convert_node_to_placeholder(new_graph, new_node, new_inps)
+                if r:
                     is_removing = True
-                    _convert_node_to_placeholder(new_graph, new_node, new_inps)
             if not is_removing:
                 continue
-            # TODO CAREFUL consolidating placeholders can make bug evaporate
-            new_graph = _consolidate_placeholders(new_graph, new_inps)
             new_graph.eliminate_dead_code()
+            new_graph = _consolidate_placeholders(new_graph, new_inps)
             new_state = remove_unused_inputs_unchecked(ReproState(new_graph, new_inps))
             if new_state is None:
                 new_state = ReproState(new_graph, new_inps)

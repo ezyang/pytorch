@@ -177,7 +177,7 @@ class ContentStoreWriter:
         h = self.write_storage(storage)
         # TODO: Support more advanced snapshotting of requires_grad/grad/etc
         d, f = os.path.split(name)
-        payload = self.compute_tensor_metadata(t)
+        payload = self.compute_tensor_metadata(t, h=h)
         subfolder = os.path.join(self.loc, "tensors", d)
         os.makedirs(subfolder, exist_ok=True)
         torch.save(payload, os.path.join(subfolder, f))
@@ -207,7 +207,6 @@ class ContentStoreReader:
 
     def read_tensor_metadata(self, name: str):
         fn = os.path.join(self.loc, "tensors", name)
-        print(fn)
         if not os.path.exists(fn):
             raise FileNotFoundError(fn)
         return torch.load(fn, weights_only=True)
