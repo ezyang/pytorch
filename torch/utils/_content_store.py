@@ -206,7 +206,11 @@ class ContentStoreReader:
         return s
 
     def read_tensor_metadata(self, name: str):
-        return torch.load(os.path.join(self.loc, "tensors", name), weights_only=True)
+        fn = os.path.join(self.loc, "tensors", name)
+        print(fn)
+        if not os.path.exists(fn):
+            raise FileNotFoundError(fn)
+        return torch.load(fn, weights_only=True)
 
     def read_tensor(self, name: str, *, device=None) -> torch.Tensor:
         dtype, h, storage_offset, size, stride, metadata = self.read_tensor_metadata(

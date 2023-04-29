@@ -109,6 +109,11 @@ inps = [torch.zeros(())] + [torch.ones(shape, dtype=dtype, device=device) for (s
 {fx_g.code}
 """)
 
+def is_power_of_two(n):
+    if n == 0:
+        return False
+    return (n & (n - 1)) == 0
+
 @dataclass
 class ReproState:
     graph: fx.Graph
@@ -135,6 +140,9 @@ def minifier(
     """
     failing_graph = fail_f.graph
     cur_size = len(failing_graph.nodes)
+
+    if max_granularity is not None and not is_power_of_two(max_granularity):
+        raise RuntimeError(f"max_granularity {max_granularity} not power of two")
 
     num_queries = 0
 
@@ -352,12 +360,10 @@ def minifier(
                 return new_state
         return None
 
-    first = True
     while True:
-        # TODO: skip this if sanity
-        if not first:
-            dump_state(fx.GraphModule(fail_f, failing_state.graph), failing_state.inps)
-        first = False
+        # TODO: skip this if sanity? But useful to get minimal dir state if
+        # you minified inplace...  TODO: have a package option
+        dump_state(fx.GraphModule(fail_f, failing_state.graph), failing_state.inps)
         granularity = int(2**(math.floor(math.log2(len(failing_state.graph.nodes)))))
         if max_granularity is not None:
             granularity = min(max_granularity, granularity)
