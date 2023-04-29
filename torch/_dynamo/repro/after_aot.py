@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import textwrap
 import uuid
 from importlib import import_module
@@ -38,6 +39,9 @@ from torch.multiprocessing.reductions import StorageWeakRef
 from torch.utils._content_store import ContentStoreReader, ContentStoreWriter
 
 from .. import config
+
+import torch._functorch.fx_minifier
+torch._functorch.fx_minifier.READER = ContentStoreReader('/home/ezyang/local/a/pytorch/torch_compile_debug/run_2023_04_28_10_11_59_260195-pid_2880226/minifier/checkpoints/')
 
 log = logging.getLogger(__name__)
 
@@ -554,12 +558,12 @@ def isolate_fails(
     )
     p.wait()
 
+    stdout.seek(0)
+    stderr.seek(0)
+    print(textwrap.indent(stdout.read().decode("utf-8"), prefix=">>  "))
+    print(textwrap.indent(stderr.read().decode("utf-8"), prefix=">>  "))
+    # print(f"Isolated test failed - {file_name}")
     if p.returncode != 0:
-        stdout.seek(0)
-        stderr.seek(0)
-        print(textwrap.indent(stdout.read().decode("utf-8"), prefix=">>  "))
-        print(textwrap.indent(stderr.read().decode("utf-8"), prefix=">>  "))
-        # print(f"Isolated test failed - {file_name}")
         return True
     return False
 
@@ -610,7 +614,7 @@ def inductor_accuracy_fails(fx_g, args, check_str=None):
     return backend_aot_accuracy_fails(fx_g, args, compile_fx_inner)
 
 
-backend_aot_accuracy_fails = functools.partial(backend_accuracy_fails, only_fwd=True)
+backend_aot_accuracy_fails = functools.partial(backend_accuracy_fails, only_fwd=True, require_fp64=True)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -662,6 +666,7 @@ def repro_main(options, mod, args):
             offload_to_disk=options.offload_to_disk,
             skip_offload=options.skip_saving_eager_intermediates,
             skip_sanity=options.skip_sanity,
+            max_granularity=options.max_granularity,
         )
 
     elif options.analyze:
@@ -910,6 +915,12 @@ def run_repro(
         "--skip-sanity",
         action="store_true",
         help="skip sanity check at beginning of minification on original graph",
+    )
+    parser.add_argument(
+        "--max-granularity",
+        type=int,
+        default=None,
+        help="start at this granularity and work down",
     )
 
     options = parser.parse_args()

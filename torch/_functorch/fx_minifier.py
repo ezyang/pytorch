@@ -1,4 +1,5 @@
 import torch.fx as fx
+from torch._prims_common import is_float_dtype
 import copy
 import torch
 import os
@@ -44,7 +45,8 @@ class ConcreteProp(torch.fx.Interpreter):
         with tqdm(desc="Saving intermediates for delta debugging", total=len(self.module.graph.nodes)) as pbar:
             self.pbar = pbar
             r = super().run(*args)
-            pbar.set_description("Saved!  To skip next time, run with --skip-saving-eager-intermediates")
+            if not self.skip_offload:
+                pbar.set_description("Saved!  To skip next time, run with --skip-saving-eager-intermediates")
             return r
 
 
@@ -52,14 +54,18 @@ READER = None
 
 from torch._custom_op import custom_op
 
-@custom_op('(str name, *, Device? device=None) -> Tensor', ns='minifier')
-def load_tensor(name, *, device=None):
+@custom_op('(str name, *, ScalarType? dtype=None, Device? device=None) -> Tensor', ns='minifier')
+def load_tensor(name, *, dtype=None, device=None):
     ...
 
 @load_tensor.impl("factory")
-def load_tensor_factory(name, *, device=None):
+def load_tensor_factory(name, *, dtype=None, device=None):
     assert READER is not None
-    return READER.read_tensor(os.path.join("eager", name), device=device)
+    r = READER.read_tensor(os.path.join("eager", name), device=device)
+    # TODO: preserve strides
+    if dtype == torch.float64 and is_float_dtype(r.dtype):
+        r = r.to(dtype)
+    return r
 
 
 # inplace modifies node/inps
@@ -110,7 +116,8 @@ class ReproState:
 
 def minifier(
     fail_f: fx.GraphModule, inps, module_fails, dump_state: Callable = dump_state, *,
-    save_dir = None, offload_to_disk = False, skip_offload = False, skip_sanity = False
+    save_dir = None, offload_to_disk = False, skip_offload = False, skip_sanity = False,
+    max_granularity = None
 ):
     """
     Minimizes a FX graph with given inputs, such that the resulting FX graph still returns True for module_fails.
@@ -265,18 +272,28 @@ def minifier(
         return None
 
 
-    def _consolidate_placeholders(cur_graph):
+    def _consolidate_placeholders(cur_graph, inps):
         new_graph = fx.Graph()
         env = {}
+        seen_non_placeholder = False
+        # TODO: this is awful, please refactor
         for node in cur_graph.nodes:
             if node.op == 'placeholder':
                 new_node = new_graph.node_copy(node, lambda x: env[x])
                 env[node] = new_node
+            elif not seen_non_placeholder and node.op == 'call_function' and node.target is torch.ops.minifier.load_tensor.default:
+                new_node = new_graph.placeholder(node.name)
+                env[node] = new_node
+                inps.append(torch.ops.minifier.load_tensor.default(*node.args))
+            else:
+                seen_non_placeholder = True
 
+        seen_non_placeholder = False
         for node in cur_graph.nodes:
-            if node.op != 'placeholder':
+            if node.op != 'placeholder' and not (not seen_non_placeholder and node.op == 'call_function' and node.target is torch.ops.minifier.load_tensor.default):
                 new_node = new_graph.node_copy(node, lambda x: env[x])
                 env[node] = new_node
+                seen_non_placeholder = True
         return new_graph
 
     @register_strategy("Delta Debugging")
@@ -294,15 +311,22 @@ def minifier(
                     _convert_node_to_placeholder(new_graph, new_node, new_inps)
             if not is_removing:
                 continue
-            new_graph = _consolidate_placeholders(new_graph)
+            new_graph = _consolidate_placeholders(new_graph, new_inps)
             new_graph.eliminate_dead_code()
-            # new_state = remove_unused_inputs_unchecked(ReproState(new_graph, new_inps))
-            # new_state = remove_unused_inputs_unchecked(ReproState(new_graph, new_inps))
-            # if new_state is None:
-            new_state = ReproState(new_graph, new_inps)
+            new_state = remove_unused_inputs_unchecked(ReproState(new_graph, new_inps))
+            if new_state is None:
+                new_state = ReproState(new_graph, new_inps)
             if graph_fails(new_state.graph, new_state.inps):
                 return ReproState(new_state.graph, new_state.inps)
 
+        return None
+
+    @register_strategy("Consolidate Inputs")
+    def consolidate_inputs(cur_graph, cur_inps, granularity):
+        old_len = len(cur_inps)
+        cur_graph = _consolidate_placeholders(cur_graph, cur_inps)
+        if len(cur_inps) > old_len and graph_fails(cur_graph, cur_inps):
+            return ReproState(cur_graph, cur_inps)
         return None
 
     failing_state = ReproState(failing_graph, inps)
@@ -321,16 +345,23 @@ def minifier(
 
         strategies += [remove_suffix, delta_debugging]
 
+        # strategies = [consolidate_inputs]
+
         for strategy in strategies:
             new_state = strategy(failing_state, granularity)
             if new_state is not None:
                 return new_state
         return None
 
+    first = True
     while True:
         # TODO: skip this if sanity
-        dump_state(fx.GraphModule(fail_f, failing_state.graph), failing_state.inps)
+        if not first:
+            dump_state(fx.GraphModule(fail_f, failing_state.graph), failing_state.inps)
+        first = False
         granularity = int(2**(math.floor(math.log2(len(failing_state.graph.nodes)))))
+        if max_granularity is not None:
+            granularity = min(max_granularity, granularity)
         new_state = try_granularity(failing_state, granularity, use_non_granular=True)
         if new_state is not None:
             failing_state = new_state

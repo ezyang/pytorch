@@ -153,11 +153,9 @@ class ContentStoreWriter:
         subfolder = os.path.join(self.loc, "storages")
         os.makedirs(subfolder, exist_ok=True)
         target = os.path.join(subfolder, h)
-        """
         # make this configurable
         if os.path.exists(target):
             return h
-        """
         torch.save(storage, target)
         self.seen_storage_hashes.add(h)
         return h

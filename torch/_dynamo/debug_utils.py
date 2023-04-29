@@ -307,7 +307,7 @@ def run_fwd_maybe_bwd(gm, args, only_fwd=False):
     return collect_results(gm, out, None, args)
 
 
-def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
+def same_two_models(gm, opt_gm, example_inputs, only_fwd=False, *, require_fp64=False):
     """
     Check two models have same accuracy.
     """
@@ -334,6 +334,8 @@ def same_two_models(gm, opt_gm, example_inputs, only_fwd=False):
         )
         fp64_ref = run_fwd_maybe_bwd(fp64_model, fp64_examples, only_fwd)
     except Exception:
+        if require_fp64:
+            raise RuntimeError("Could not generate fp64 outputs")
         log.warning("Could not generate fp64 outputs")
         fp64_ref = None
 
@@ -364,6 +366,8 @@ def cast_convert_element_type_to_fp64(model):
             assert len(node.args) == 2
             if is_float_dtype(node.args[1]) and node.args[1] != torch.float64:
                 node.args = (node.args[0], torch.float64)
+        elif node.op == "call_function" and node.target == torch.ops.minifier.load_tensor.default:
+            node.kwargs = { **node.kwargs, 'dtype': torch.float64 }
     model.graph.lint()
     model.recompile()
     return model
@@ -391,10 +395,10 @@ def cast_to_fp64(model, inputs):
     return cast_to(torch.float64, model, inputs)
 
 
-def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False):
+def backend_accuracy_fails(gm, example_inputs, compiler_fn, only_fwd=False, *, require_fp64=False):
     try:
         compiled_gm = compiler_fn(copy.deepcopy(gm), clone_inputs(example_inputs))
-        return not same_two_models(gm, compiled_gm, example_inputs, only_fwd)
+        return not same_two_models(gm, compiled_gm, example_inputs, only_fwd, require_fp64=require_fp64)
     except Exception as e:
         # This means that the the minified graph is bad/exposes a different problem.
         # As we are checking accuracy here, lets log the exception and return False.
