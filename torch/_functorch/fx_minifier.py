@@ -311,6 +311,7 @@ def minifier(
                     _convert_node_to_placeholder(new_graph, new_node, new_inps)
             if not is_removing:
                 continue
+            # TODO CAREFUL consolidating placeholders can make bug evaporate
             new_graph = _consolidate_placeholders(new_graph, new_inps)
             new_graph.eliminate_dead_code()
             new_state = remove_unused_inputs_unchecked(ReproState(new_graph, new_inps))
@@ -341,11 +342,9 @@ def minifier(
             strategies += [remove_outputs]
 
         if use_non_granular:
-            strategies += [eliminate_dead_code, remove_unused_inputs]
+            strategies += [eliminate_dead_code, remove_unused_inputs, consolidate_inputs]
 
         strategies += [remove_suffix, delta_debugging]
-
-        # strategies = [consolidate_inputs]
 
         for strategy in strategies:
             new_state = strategy(failing_state, granularity)
