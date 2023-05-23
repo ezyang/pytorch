@@ -1134,7 +1134,10 @@ def init_process_group(
         # these barriers may be unnecessary, as proved by a green CI after
         # removal. An environment variable `TORCH_DIST_INIT_BARRIER` has been
         # added which, when set to 0, will disable these barriers.
-        if backend == Backend.MPI:
+        if backend == "fake":
+            # Fake process group doesn't need barrier
+            pass
+        elif backend == Backend.MPI:
             # MPI backend doesn't use store.
             barrier()
         else:
@@ -1663,6 +1666,7 @@ def _coalescing_manager(
         # Re-throw exception caught by code inside the context manager
         raise
     else:
+        work = None
         op_list = _world.pg_coalesce_state.pop(group)
         if op_list:
             # Collectives supporting "Fast Path" coalescing are captured.
@@ -1695,10 +1699,11 @@ def _coalescing_manager(
             # Old style of letting each coll inside the context manager to call into C++ counterpart via python binding
             work = group._end_coalescing(device)
 
-        if async_ops:
-            cm.append(work)
-        else:
-            work.wait()
+        if work is not None:
+            if async_ops:
+                cm.append(work)
+            else:
+                work.wait()
 
 
 def batch_isend_irecv(p2p_op_list):

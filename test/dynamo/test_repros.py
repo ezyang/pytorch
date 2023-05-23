@@ -3190,6 +3190,15 @@ class ReproTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(ref_mantissa, mantissa)
         self.assertEqual(ref_exponent, exponent)
 
+    @requires_cuda()
+    def test_disallow_data_parallel(self):
+        from torch.nn.parallel.data_parallel import DataParallel
+        mod = nn.Linear(3, 5).cuda()
+        mod = DataParallel(mod)
+
+        opt_mod = torch._dynamo.optimize("eager")(mod)
+        opt_mod(torch.randn(8, 3, device='cuda'))
+
 
 if __name__ == "__main__":
     from torch._dynamo.test_case import run_tests

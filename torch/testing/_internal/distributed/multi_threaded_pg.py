@@ -248,6 +248,7 @@ class ProcessLocalGroup(dist.ProcessGroup):
 
     @classmethod
     def _start_coll(cls, collective, pg):
+        print(f"[{pg._rank}] _start_coll {collective}")
         with cls._coll_lock:
             if not cls._ready:
                 raise Exception(

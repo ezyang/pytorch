@@ -313,6 +313,7 @@ class UserMethodVariable(UserFunctionVariable):
             if (
                 module_attr is not None
                 and module_attr.startswith("torch.nn.")
+                and not module_attr.startswith("torch.nn.parallel.")
                 or self.is_constant
             ):
                 return self.obj.call_method(

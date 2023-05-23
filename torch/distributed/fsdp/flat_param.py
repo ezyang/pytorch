@@ -173,7 +173,14 @@ class FlatParamShardMetadata(NamedTuple):
     param_offsets: Tuple[Tuple[int, int], ...]
 
 
-class FlatParameter(nn.Parameter):
+class _FlatParameterMeta(torch._C._TensorMeta):
+    # Make `isinstance(t, FlatParameter)` return True for custom tensor instances that have the _is_flat_param flag.
+    def __instancecheck__(self, instance):
+        return super().__instancecheck__(instance) or (
+            isinstance(instance, torch.Tensor) and getattr(instance, '_is_flat_param', False))
+
+
+class FlatParameter(metaclass=_FlatParameterMeta):
     """
     This is the flat parameter used by :class:`FullyShardedDataParallel`. It is
     comprised of one or more original parameters, which are flattened and
@@ -289,6 +296,11 @@ class FlatParameter(nn.Parameter):
             of zeros) as needed.
     """
 
+    def __new__(cls, data=None, requires_grad=True):
+        r = nn.Parameter.__new__(cls, data, requires_grad)
+        r._is_flat_param = True
+        return r
+
     def _init_metadata(
         self,
         param_infos: List[ParamInfo],
@@ -368,6 +380,9 @@ class FlatParameter(nn.Parameter):
         # Tracks whether the `FlatParameter`'s post-backward hook has been
         # called to modify the behavior of the post-backward callback
         self._post_backward_called = False
+
+
+Tensor._init_metadata = FlatParameter._init_metadata
 
 
 class FlatParamHandle:
