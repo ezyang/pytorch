@@ -3,8 +3,10 @@ Weight Normalization from https://arxiv.org/abs/1602.07868
 """
 from torch.nn.parameter import Parameter, UninitializedParameter
 from torch import _weight_norm, norm_except_dim
+import torch.utils._copy
 from typing import Any, TypeVar
 from ..modules import Module
+import types
 
 __all__ = ['WeightNorm', 'weight_norm', 'remove_weight_norm']
 
@@ -52,6 +54,34 @@ class WeightNorm:
         # recompute weight before every forward()
         module.register_forward_pre_hook(fn)
 
+        # NB: Repeated deepcopy doesn't work
+        old_deepcopy = getattr(module, "__deepcopy__", torch.utils._copy.default_deepcopy)
+        def new_deepcopy(self, memo):
+            uncopyable_weight = getattr(module, name)
+            try:
+                # Skip the uncopyable Tensor...
+                setattr(module, name, None)
+                r = old_deepcopy(self, memo)
+                # ...and recompute it the normal way
+                setattr(r, name, fn.compute_weight(r))
+                return r
+            finally:
+                setattr(module, name, uncopyable_weight)
+        new_deepcopy.old_deepcopy = old_deepcopy
+        setattr(module, "__deepcopy__", types.MethodType(new_deepcopy, module))
+
+        # Assume that we're getting the nn.Module getstate which only ever
+        # returns a dict
+        old_getstate = getattr(module, "__getstate__")
+        def new_getstate(self):
+            r = old_getstate()
+            assert isinstance(r, dict)
+            del r['__deepcopy__']
+            del r['__getstate__']
+            return r
+        new_getstate.old_getstate = old_getstate
+        setattr(module, "__getstate__", types.MethodType(new_getstate, module))
+
         return fn
 
     def remove(self, module: Module) -> None:
@@ -60,6 +90,13 @@ class WeightNorm:
         del module._parameters[self.name + '_g']
         del module._parameters[self.name + '_v']
         setattr(module, self.name, Parameter(weight.data))
+        if hasattr(module, '__deepcopy__'):
+            if getattr(module.__deepcopy__, 'old_deepcopy', None) is torch.utils._copy.default_deepcopy:
+                delattr(module, "__deepcopy__")
+            else:
+                setattr(module, "__deepcopy__", module.__deepcopy__.old_deepcopy)
+        if hasattr(module.__getstate__, 'old_getstate'):
+            setattr(module, "__getstate__", module.__getstate__.old_getstate)
 
     def __call__(self, module: Module, inputs: Any) -> None:
         setattr(module, self.name, self.compute_weight(module))

@@ -1737,7 +1737,8 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         check_weight_norm(torch.nn.LSTM(32, 32, proj_size=16), 'weight_hr_l0', 5)
 
 
-    def test_weight_norm(self):
+    @parametrize_test('test_deepcopy', [True, False])
+    def test_weight_norm(self, test_deepcopy):
         for dtype in [torch.float, torch.bfloat16]:
             input = torch.randn(3, 4, dtype=dtype)
             m = nn.Linear(4, 5).to(dtype=dtype)
@@ -1745,6 +1746,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
 
             # add weight normalization
             m = torch.nn.utils.weight_norm(m)
+            if test_deepcopy:
+                m = deepcopy(m)
+                m = deepcopy(m)  # test repeated deepcopy works
             self.assertEqual(m.weight_v.size(), m.weight.size())
             self.assertEqual(m.weight_g.size(), (5, 1))
             self.assertEqual(m(input), expected_output, atol=dtype2prec_DONTUSE[dtype], rtol=0)
@@ -1757,6 +1761,8 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
 
             # test with dim=1
             m = torch.nn.utils.weight_norm(m, dim=1)
+            if test_deepcopy:
+                m = deepcopy(m)
             self.assertEqual(m.weight_v.size(), m.weight.size())
             self.assertEqual(m.weight_g.size(), (1, 4))
             self.assertEqual(m(input), expected_output, atol=dtype2prec_DONTUSE[dtype], rtol=0)
@@ -1765,6 +1771,8 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
             m = nn.Linear(4, 5).to(dtype=dtype)
             expected_output = m(input)
             m = torch.nn.utils.weight_norm(m, dim=None)
+            if test_deepcopy:
+                m = deepcopy(m)
             self.assertEqual(m(input), expected_output)
 
             with self.assertRaisesRegex(RuntimeError, 'register two weight_norm hooks'):
@@ -1776,6 +1784,8 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         # CUDA.
         m = nn.Linear(4, 5, dtype=torch.float16)
         m = torch.nn.utils.weight_norm(m)
+        if test_deepcopy:
+            m = deepcopy(m)
 
     def test_parameterlistdict_setting_attributes(self):
         with warnings.catch_warnings(record=True) as w:
@@ -1825,6 +1835,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""")
         m = torch.nn.utils.weight_norm(nn.Linear(5, 7))
         m = pickle.loads(pickle.dumps(m))
         self.assertIsInstance(m, nn.Linear)
+        # But see https://github.com/pytorch/pytorch/issues/102983
 
     @skipIfTorchDynamo("TorchDynamo fails here for unknown reasons")
     def test_spectral_norm(self):
