@@ -205,7 +205,7 @@ enforce_cond_guards_match = True
 # run without graph-breaks, but also without comm/compute overlap.
 # set torch._dynamo.config.log_level to INFO or DEBUG for more info
 # about optimize_ddp behavior.
-optimize_ddp = True
+optimize_ddp = False
 
 # Whether to skip guarding on FSDP-managed modules
 skip_fsdp_guards = True
