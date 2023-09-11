@@ -743,7 +743,7 @@ def expand(x, sizes):
         return x
 
     x_size_product = V.graph.sizevars.size_hint(sympy_product(x.get_size()))
-    if x_size_product > 0:
+    if x_size_product > 0 and not any([V.graph.sizevars.shape_env.is_unbacked_symint(s) for s in sizes]):
         # maybe realize input before broadcasting it
         x.mark_reuse(V.graph.sizevars.size_hint(sympy_product(sizes)) // x_size_product)
     return TensorBox(ExpandView.create(x.data, tuple(sizes)))
@@ -4772,6 +4772,20 @@ try:
             self, reduceOp, tag, ranks, group_size
         )
         return list(map(TensorBox.create, result))
+
+    # NOTE: Under torch.compile, the default `type_promotion_kind` will allocate float32 buffers
+    # for `output_split_sizes` and `input_split_sizes` and then copy the inputs (int64 tensors)
+    # into the float32 buffers, which is incorrect. Here we set `type_promotion_kind=None` to
+    # disable that behavior.
+    @register_lowering(c10d_functional.all_to_all_single, type_promotion_kind=None)
+    def all_to_all_single(
+        self, output_split_sizes, input_split_sizes, tag, ranks, group_size
+    ):
+        return TensorBox.create(
+            ir.AllToAllSingle.create(
+                self, output_split_sizes, input_split_sizes, tag, ranks, group_size
+            )
+        )
 
 except ImportError:
     log.info(

@@ -12,6 +12,7 @@ import sympy
 
 import torch
 
+from torch.fx.experimental.symbolic_shapes import free_symbols
 import torch._logging
 from torch._prims_common import is_integer_dtype
 from torch.utils._sympy.functions import FloorDiv, ModularIndexing
