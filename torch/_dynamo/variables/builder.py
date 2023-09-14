@@ -1336,6 +1336,7 @@ def wrap_fx_proxy_cls(
         # tensor, the stored example value will update too!)
         example_value = _clone_input(example_value)
         proxy.node.meta["example_value"] = example_value
+        log.info("%s: %s = %s", proxy.node, tuple(example_value.shape), proxy.node.format_node().split(" = ", maxsplit=1)[1])
         specialized_props = target_cls.specialize(example_value)
         # TODO: not sure about this fake mode test
         if (
@@ -1412,6 +1413,7 @@ def wrap_fx_proxy_cls(
         return ConstantVariable(None, **options)
     elif isinstance(example_value, (torch.SymInt, torch.SymFloat, torch.SymBool)):
         proxy.node.meta["example_value"] = example_value
+        log.info("%s: Sym(%s) = %s", proxy.node, example_value, proxy.node.format_node().split(" = ", maxsplit=1)[1])
         return SymNodeVariable(proxy, example_value, **options)
     elif proxy.node.target in [torch.cuda.streams.Stream, torch.cuda.current_stream]:
         proxy.node.meta["example_value"] = example_value
