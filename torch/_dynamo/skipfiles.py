@@ -196,6 +196,11 @@ FILENAME_INLINELIST |= set(
     _module_dir(torch) + "_export/wrappers.py",
 }
 
+if torch.distributed.is_available() and torch._dynamo.config.trace_distributed:
+    FILENAME_INLINELIST |= set(
+        glob.glob(_module_dir(torch) + "distributed/**/*.py", recursive=True),
+    )
+
 
 # Force inline functions under these modules, even the modules is in *_SKIPLIST.
 SUBMODULE_INLINELIST = {
