@@ -497,8 +497,7 @@ def _are_we_tracing() -> bool:
     return mode.tracer is not None
 
 def _maybe_wrap_tensor(self) -> torch.Tensor:
-    if _are_we_tracing():
-        return wait_tensor(self)
+    return wait_tensor(self)
     res = AsyncCollectiveTensor(self)
     _register_tensor_wrapper(res)
     return cast(torch.Tensor, res)

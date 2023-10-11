@@ -93,6 +93,7 @@ if torch.distributed.is_available():
             torch.distributed.is_initialized,
             torch.distributed.get_rank,
             torch.distributed.get_world_size,
+            torch.distributed.distributed_c10d._get_default_group,
         ]
     )
 

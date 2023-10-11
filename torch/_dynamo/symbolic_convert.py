@@ -1487,7 +1487,7 @@ class InstructionTranslatorBase(Checkpointable[InstructionTranslatorGraphState])
             val = [wrap_fx_proxy(self, proxy[i], **options) for i in range(inst.argval)]
         else:
             unimplemented(f"UNPACK_SEQUENCE {seq}")
-        assert len(val) == inst.argval
+        assert len(val) == inst.argval, f"len({val}) != {inst.argval}"
         for i in reversed(val):
             self.push(i)
 

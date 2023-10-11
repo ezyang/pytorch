@@ -9,10 +9,15 @@ import builtins
 import dis
 import traceback
 from typing import Optional, Union
+import logging
 
 import torch
 
 from .exc import unimplemented
+from .variables.tensor import TensorVariable
+
+
+log = logging.getLogger(__name__)
 
 
 class ComptimeVar:
@@ -103,8 +108,11 @@ class ComptimeVar:
         return self.__variable
 
     def __repr__(self):
+        v = self.__variable
         # TODO: The default repr is pretty bad, do better
-        return repr(self.__variable)
+        if isinstance(v, TensorVariable):
+            return f"TensorVariable({self.as_fake()})"
+        return repr(v)
 
     # TODO: API for adding a custom guard
 
@@ -289,6 +297,12 @@ def print_locals(*, stacklevel=0):
     )
 
 
+def print(val):
+    comptime(
+        lambda ctx: log.warning("comptime.print: %s", ctx.get_local("val"),)
+    )
+
+
 def print_bt(*, stacklevel=0):
     comptime(
         lambda ctx: ctx.print_bt(
@@ -337,5 +351,6 @@ comptime.print_value_stack = print_value_stack
 comptime.print_value_stack_and_return = print_value_stack_and_return
 comptime.print_locals = print_locals
 comptime.print_bt = print_bt
+comptime.print = print
 comptime.print_guards = print_guards
 comptime.breakpoint = breakpoint

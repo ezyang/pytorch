@@ -269,6 +269,7 @@ def speculate_subgraph(
                 )
 
     except Unsupported as ex:
+        raise
         f_name = f"{type(f).__name__}"
         if isinstance(f, UserFunctionVariable):
             f_name = f.get_name()
