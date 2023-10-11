@@ -251,7 +251,13 @@ class GuardBuilder(GuardBuilderBase):
     # (like its type) which is what you permanently install into the
     # guard code.
     def get(self, name: str) -> Any:
-        return eval(name, self.scope, CLOSURE_VARS)
+        try:
+            return eval(name, self.scope, CLOSURE_VARS)
+        except Exception:
+            import torch.distributed as dist
+            if dist.get_rank() == 0:
+                breakpoint()
+            dist.barrier()
 
     # Registers the usage of the source name referenced by the
     # string (or stored in the Guard) as being guarded upon.  It's important
@@ -1001,6 +1007,8 @@ class CheckFunctionManager:
         # the inverse is illegal.
         if "G" in global_builder.scope:
             local_builder.scope["G"] = global_builder.scope["G"]
+        if "L" in local_builder.scope:
+            global_builder.scope["L"] = local_builder.scope["L"]
         # source_ref can cause a cycle, make sure we break it with weakref
         w_local = weakref.ref(local_builder)
         w_global = weakref.ref(global_builder)
