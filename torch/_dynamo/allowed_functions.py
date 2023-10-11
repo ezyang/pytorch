@@ -324,6 +324,7 @@ def _is_allowed_distributed(obj):
             torch.distributed._functional_collectives_impl._all_reduce_coalesced,
             torch.distributed._functional_collectives_impl._all_gather_into_tensor_coalesced,
             torch.distributed._functional_collectives_impl._reduce_scatter_tensor_coalesced,
+            torch.distributed.distributed_c10d.get_rank,
         ]:
             return True
         return False
