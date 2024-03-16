@@ -303,6 +303,8 @@ class TestMetaConverter(TestCase):
             r.append(m(li[-1]))
         self.assertEqual(len(m.tensor_memo), 4)
         del li
+        del y
+        del z
         self.assertEqual(len(m.tensor_memo), 0)
         m.check_for_expired_weak_storages()
         self.assertEqual(len(m.storage_memo), 0)
