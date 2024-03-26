@@ -814,6 +814,20 @@ class TestDecomp(TestCase):
 instantiate_device_type_tests(TestDecomp, globals())
 
 
+class TestDecompScalar(TestCase):
+    @unittest.skipIf(TEST_WITH_ASAN, "Skipped under ASAN")
+    @onlyNativeDeviceTypes
+    @skipIfCrossRef
+    @suppress_warnings
+    @ops(op_db)
+    def test_comprehensive(self, device, dtype, op):
+        func = op.get_op()
+        samples = op.sample_inputs(device, dtype)
+        for sample_input in samples:
+            print(sample_input)
+
+instantiate_device_type_tests(TestDecompScalar, globals())
+
 class DecompOneOffTests(TestCase):
     @unittest.skipIf(TEST_WITH_ASAN, "Skipped under ASAN")
     @onlyNativeDeviceTypes
