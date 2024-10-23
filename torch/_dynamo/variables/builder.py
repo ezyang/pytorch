@@ -332,11 +332,31 @@ class BackwardStateGraphArg(GraphArg):
         codegen.store(codegen.tx.output.backward_state_var)
 
 
+@dataclasses.dataclass(frozen=True)
+class InferStride:
+    """
+    Denotes the quantity stride[dim] * size[dim], which is what the stride would
+    be for the next physical dimension that results in a contiguous layout.
+
+    For example, given size = [2, 3], stride = [3, 1], we can replace this with
+    stride = [InferStride(1), 1], because InferStride(1) = stride[1] * size[1] = 1 * 3 = 3
+
+    Indirecting the representation in this way is important for the join operation
+    on strides as if we join [2, 3][3, 1] and [2, 4][4, 1],
+    we don't want [2, None][None, 1] which would get eventually symbolized into
+    [2, s0][s1, 1] (notice that the relationship between s0 and s1 is broken).
+    If we instead rewrite the expressions as InferStride so we have [2, 3][InferStride(1), 1]
+    and [2, 4][InferStride(1), 1] we now join to [2, None][InferStride(1), 1] will
+    result in [2, s0][s0, 1], as desired.
+    """
+    dim: int
+
+
 @dataclasses.dataclass
 class FrameStateSizeEntry:
-    scalar: Optional[int]
-    size: Optional[List[Optional[int]]]
-    stride: Optional[List[Optional[int]]]
+    scalar: Optional[int] = dataclasses.field(default=None)
+    size: Optional[List[Optional[int]]] = dataclasses.field(default=None)
+    stride: Optional[List[Optional[Union[int, InferStride]]]] = dataclasses.field(default=None)
 
     @staticmethod
     def _merge_int(x: Optional[int], y: Optional[int]) -> Optional[int]:
@@ -355,6 +375,47 @@ class FrameStateSizeEntry:
         self.size = self._merge_int_list(self.size, other.size)
         self.stride = self._merge_int_list(self.stride, other.stride)
         return self
+
+
+def process_automatic_dynamic(tx, name, entry):
+    # Note - this essentially means that if this name gets reused as a tensor,
+    # it will start fully dynamic. That should always be a safe option, and not awfully inefficient.
+    # Alternatively, if we want to improve perf here, we can add a third state of unset, but I am not
+    # sure that is necessary for now.
+    if (st := tx.distributed_state) is None:
+        return update_automatic_dynamic(
+            tx, name, FrameStateSizeEntry(scalar=value),
+            # TODO: handle this
+            is_unspecialized_nn_module=self.source.guard_source().is_unspecialized_nn_module()
+        )
+    elif st.all_states is None:
+        # Preflight, always pretend as if it's static.  The point here
+        # is we want to get through the preflight quickly, and static
+        # will run faster.  The preexisting frame state will get
+        # applied anyway after we do compiler collectives.
+        # TODO: I'm not sure if we should just bong the entire pgo
+        # state here, it kind of depends if we're going to have other
+        # things that talk in compiler collective.  Also, the PGO
+        # state, if we've already inferred something is automatic
+        # dynamic, will have lost the actual input sizes, which might
+        # be useful for debugging purposes (e.g., observing 0/1
+        # specialization).  Bonging the entire PGO state here would
+        # let us delete this logic here; the compiler collective
+        # would just directly update_automatic_dynamic
+        st.local_state.automatic_dynamic[name] = entry
+        return entry
+    else:
+        # Apply the updates.  NB: all_states includes the local state
+        # too.
+        res = None
+        for sub_state in st.all_states:
+            if name in sub_state.automatic_dynamic:
+                res = update_automatic_dynamic(
+                    self.tx, name, sub_state.automatic_dynamic[name],
+                    is_unspecialized_nn_module=self.source.guard_source().is_unspecialized_nn_module()
+                )
+        assert res is not None
+        return res
 
 
 # All class-based iterators in itertools
@@ -1783,64 +1844,7 @@ class VariableBuilder:
 
             name = self.source.name()
 
-            def update_frame_state(value):
-                frame_state_entry = self.tx.output.frame_state.get(
-                    name, get_automatic_dynamic_initial_frame_state(self.tx, name)
-                )
-                if frame_state_entry is None:
-                    # Note - this essentially means that if this name gets reused as a tensor,
-                    # it will start fully dynamic. That should always be a safe option, and not awfully inefficient.
-                    # Alternatively, if we want to improve pef here, we can add a third state of unset, but I am not
-                    # sure that is necessary for now.
-                    frame_state_entry = FrameStateSizeEntry(
-                        scalar=value, size=None, stride=None
-                    )
-                else:
-                    if frame_state_entry.scalar != value:
-                        log.debug(
-                            "automatic dynamic int %s val %s != %s",
-                            name,
-                            value,
-                            frame_state_entry.scalar,
-                        )
-                        get_chromium_event_logger().log_instant_event(
-                            "automatic_dynamic",
-                            time.time_ns(),
-                            {
-                                "name": name,
-                                "dim_changed": "scalar",
-                                "reason": "scalar change",
-                                "cached": str(frame_state_entry.scalar),
-                                "new": str(value),
-                            },
-                        )
-                        if self.source.guard_source().is_unspecialized_nn_module():
-                            log.info(
-                                "%s",
-                                (
-                                    f"{name} is converted to a symbolic integer. It is an attribute of a "
-                                    "user defined nn module class. If you wish to keep it static, you can "
-                                    "mark the nn module class as `torch._dynamo.mark_static`."
-                                ),
-                            )
-                        frame_state_entry.scalar = None
-                self.tx.output.frame_state[name] = frame_state_entry
-
-            if (st := self.tx.distributed_state) is None:
-                update_frame_state(value)
-                frame_state_entry = self.tx.output.frame_state[name]
-            elif st.all_states is None:
-                # Preflight, always pretend as if it's static
-                frame_state_entry = FrameStateSizeEntry(
-                    size=None, scalar=value, stride=None
-                )
-                st.local_state.input_sizes[name] = value
-            else:
-                # Apply the updates
-                for sub_state in st.all_states:
-                    if name in sub_state.input_sizes:
-                        update_frame_state(sub_state.input_sizes[name])
-                frame_state_entry = self.tx.output.frame_state[name]
+            frame_state_entry = process_automatic_dynamic(tx, name, FrameStateSizeEntry(scalar=value))
 
             # TODO: This should be dynamic, as we in general do not
             # know if bare integers are actually going to be sizevars
@@ -2501,133 +2505,35 @@ def _automatic_dynamic(
         )
 
     # Prep for automatic dynamic
-    def update_frame_state(size, stride):
-        # Intentionally shadow e from parent scope so it is not accidentally
-        # called
-        e = None
-        frame_state_entry = tx.output.frame_state.get(
-            name, get_automatic_dynamic_initial_frame_state(tx, name)
-        )
-        if frame_state_entry is None:
-            # If there is no entry for this source, add the tensor to frame state with its current static size.
-            # E.g., {} -> {"x": [2, 4]}
-            frame_state_entry = FrameStateSizeEntry(None, None, None)
-            frame_state_entry.size = list(size)
-            frame_state_entry.stride = list(stride)
-        else:
-            if frame_state_entry.size is not None:
-                if len(size) != len(frame_state_entry.size):
-                    # If there is already an entry, and the dim mismatches, replace the frame state entry with None.
-                    # E.g. {"x": [2, 3, 4]} -> {"x": None}
-                    log.debug(
-                        "automatic dynamic %s dim %s != %s",
-                        name,
-                        len(size),
-                        frame_state_entry.size,
-                    )
-                    get_chromium_event_logger().log_instant_event(
-                        "automatic_dynamic",
-                        time.time_ns(),
-                        {
-                            "name": name,
-                            "dim_changed": "all",
-                            "reason": "dimensionality change",
-                            "cached": str(frame_state_entry.size),
-                            "new": str(size),
-                        },
-                    )
-                    frame_state_entry.size = None
-                    frame_state_entry.stride = None
-                else:
-                    # If there is already an entry, and the dim matches, for every size/stride in the frame state which
-                    # disagrees with the current static size/stride, replace it with None.
-                    # E.g., {"x": [2, 3]} -> {"x": [2, # None]}
 
-                    has_size_changed = False
-                    for i, dim in enumerate(frame_state_entry.size):
-                        if dim is not None and size[i] != dim:
-                            log.debug(
-                                "automatic dynamic %s size(%s) %s != %s",
-                                name,
-                                i,
-                                size[i],
-                                dim,
-                            )
-                            get_chromium_event_logger().log_instant_event(
-                                "automatic_dynamic",
-                                time.time_ns(),
-                                {
-                                    "name": name,
-                                    "dim_changed": i,
-                                    "reason": "size change",
-                                    "cached": str(dim),
-                                    "new": str(size[i]),
-                                },
-                            )
-                            frame_state_entry.size[i] = None
-                        has_size_changed = (
-                            has_size_changed or frame_state_entry.size[i] is None
-                        )
+    # This mimics stride inference algorithm in _create_symbolic_sizes_strides_storage_offset
+    if not is_sparse_any(e):
+        dim = len(size)
+        istride = [None] * dim
+        while any(x is None for x in istride):
+            candidates = {
+                size[i] * stride[i]: InferStride(i)
+                for i in range(dim)
+                if istride[i] is not None and stride[i] >= 0
+            }
+            val_list = sorted(
+                [(stride[i], i) for i in range(dim) if istride[i] is None],
+                key=_nested_int_aware_sort
+            )
+            for _, i in val_list:
+                if istride[i] is None and stride[i] in candidates:
+                    istride[i] = candidates[stride[i]]
+                    candidates[stride[i] * size[i]] = InferStride(i)
 
-                    # We want to trigger automatic dynamism when strides change, but we have to think whether stride should
-                    # be INFER_STRIDE or DYNAMIC.
-                    #
-                    # Case 1: if strides change because of size changes, we might not want to allocate a new symbol for
-                    # stride. Lets say we have a tensor (10, 20) and we mark the dim=1 dynamic for size. Resulting size will
-                    # be (10, s0) and stride can be either (s0, 1) or (s1, 1). In most cases, (s0, 1) is preferred because
-                    # users are not changing both size and stride.
-                    #
-                    # Case 2: But for another case, lets suppose the size remains same between the two invocations but stride
-                    # change. In this case, we definitely want to mark the changing stride to be DYNAMIC.
-
-                    # Here, we use a hueristic to simplify determination of dynamic stride. For case 1, we will always
-                    # assume that stride will be inferred (INFER_STRIDE). This might be suboptimal, where user is doing something
-                    # arbitrary size and stride resizing, and we fail to trigger dynamism, but we have not seen any cases
-                    # yet. For case 2, we will mark the changing dimensions DYNAMIC.
-                    if not has_size_changed:
-                        for i, dim in enumerate(frame_state_entry.stride):
-                            if dim is not None and stride[i] != dim:
-                                log.debug(
-                                    "automatic dynamic %s stride(%s) %s != %s",
-                                    name,
-                                    i,
-                                    stride[i],
-                                    dim,
-                                )
-                                get_chromium_event_logger().log_instant_event(
-                                    "automatic_dynamic",
-                                    time.time_ns(),
-                                    {
-                                        "name": name,
-                                        "dim_changed": i,
-                                        "reason": "stride change",
-                                        "cached": str(dim),
-                                        "new": str(stride[i]),
-                                    },
-                                )
-                                frame_state_entry.stride[i] = None
-        tx.output.frame_state[name] = frame_state_entry
-
-    if (st := tx.distributed_state) is None:
-        stride = e.stride() if not is_sparse_any(e) else ()
-        update_frame_state(e.size(), stride)
-        frame_state_entry = tx.output.frame_state[name]
-    elif st.all_states is None:
-        # Preflight, always pretend as if it's static
-        frame_state_entry = FrameStateSizeEntry(
-            size=e.size(), scalar=None, stride=e.stride()
-        )
-        st.local_state.input_sizes[name] = list(e.size())
-        st.local_state.input_strides[name] = list(e.stride())
+            if any(x is None for x in istride):
+                # bind the smallest unbound stride to a new variable
+                val, i = min([(stride[i], i) for i in range(dim) if istride[i] is None], key=_nested_int_aware_sort)
+                istride[i] = val
     else:
-        # Apply the updates
-        for sub_state in st.all_states:
-            # Not all inputs are necessarily present on all ranks
-            if name in sub_state.input_sizes and name in sub_state.input_strides:
-                update_frame_state(
-                    sub_state.input_sizes[name], sub_state.input_strides[name]
-                )
-        frame_state_entry = tx.output.frame_state[name]
+        istride = []
+
+    frame_state_entry = process_automatic_dynamic(tx, name, FrameStateSizeEntry(size=list(size), stride=istride))
+    process_automatic_dynamic(tx, name, frame_state_entry)
 
     # TODO: index export_constraints ahead of time so we don't have to
     # do a linear scan every time here

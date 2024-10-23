@@ -113,6 +113,35 @@ def inplace_merge_automatic_dynamic(x: Dict[str, FrameStateSizeEntry], y: Dict[s
             x[k] |= v
 
 
+                        log.debug(
+                            "automatic dynamic int %s val %s != %s",
+                            name,
+                            value,
+                            frame_state_entry.scalar,
+                        )
+                        get_chromium_event_logger().log_instant_event(
+                            "automatic_dynamic",
+                            time.time_ns(),
+                            {
+                                "name": name,
+                                "dim_changed": "scalar",
+                                "reason": "scalar change",
+                                "cached": str(frame_state_entry.scalar),
+                                "new": str(value),
+                            },
+                        )
+                        if :
+                            log.info(
+                                "%s",
+                                (
+                                    f"{name} is converted to a symbolic integer. It is an attribute of a "
+                                    "user defined nn module class. If you wish to keep it static, you can "
+                                    "mark the nn module class as `torch._dynamo.mark_static`."
+                                ),
+                            )
+
+
+
 @functools.lru_cache(None)
 def _get_code_object_cache(
     filename: str, firstlineno: int, name: str
