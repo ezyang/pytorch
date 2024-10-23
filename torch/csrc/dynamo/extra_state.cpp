@@ -50,13 +50,6 @@ CacheEntry* extract_cache_entry(ExtraState* extra_state) {
   return extra_state->get_first_entry();
 }
 
-FrameState* extract_frame_state(ExtraState* extra_state) {
-  if (is_extra_state_unset(extra_state)) {
-    return nullptr;
-  }
-  return (FrameState*)extra_state->frame_state.ptr();
-}
-
 bool extra_state_cache_limit_hit(ExtraState* extra_state) {
   return extra_state->cache_limit_hit;
 }

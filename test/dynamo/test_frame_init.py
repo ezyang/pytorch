@@ -87,7 +87,7 @@ class FrameInitTests(torch._dynamo.test_case.TestCase):
             target_with_varkwargs.__code__: varkwargs_code2.__code__,
         }
 
-        def callback1(frame, cache_entry, frame_state):
+        def callback1(frame, cache_entry):
             if frame.f_code in code_map1:
                 transformed_code = code_map1[frame.f_code]
                 return torch._dynamo.types.GuardedCode(
@@ -95,7 +95,7 @@ class FrameInitTests(torch._dynamo.test_case.TestCase):
                 )
             return None
 
-        def callback2(frame, cache_entry, frame_state):
+        def callback2(frame, cache_entry):
             if frame.f_code in code_map2:
                 transformed_code = code_map2[frame.f_code]
                 return torch._dynamo.types.GuardedCode(

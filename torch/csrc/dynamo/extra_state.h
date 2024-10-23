@@ -42,8 +42,6 @@ typedef struct CacheEntry CacheEntry;
 typedef struct VISIBILITY_HIDDEN ExtraState {
   // List of cache entries for compiled code objects
   std::list<CacheEntry> cache_entry_list;
-  // Frame state to detect dynamic shape dims
-  py::dict frame_state;
   bool cache_limit_hit{false};
 
   CacheEntry* get_first_entry();
@@ -64,14 +62,6 @@ typedef struct ExtraState ExtraState;
 // return
 //  - CacheEntry: Borrowed.
 CacheEntry* extract_cache_entry(ExtraState* extra_state);
-
-// Returns either the previously stored frame state or an empty dict.
-// Ownership contract
-// args
-//  - extra_state: Borrowed
-// return
-//  - extra_state->frame_state: Borrowed.
-FrameState* extract_frame_state(ExtraState* extra_state);
 
 // Returns if this extra_state is marked as cache limit hit.
 // Ownership contract

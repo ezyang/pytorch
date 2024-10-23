@@ -252,8 +252,7 @@ static inline PyObject* call_callback(
     PyObject* callable,
     THP_EVAL_API_FRAME_OBJECT* _frame,
     PyObject* locals,
-    CacheEntry* cache_entry,
-    FrameState* frame_state) {
+    CacheEntry* cache_entry) {
 
 // remember to update the type signature for DynamoCallbackFn.__call__ in torch/_dynamo/types.py
 // if this function changes
@@ -270,10 +269,9 @@ static inline PyObject* call_callback(
   PyObject* cache_entry_pyobj = CacheEntry_to_obj(cache_entry);
   PyObject* res = PyObject_CallFunction(
     callable,
-    "OOO",
+    "OO",
     frame,
-    cache_entry_pyobj,
-    frame_state);
+    cache_entry_pyobj);
   Py_DECREF(frame);
   Py_DECREF(cache_entry_pyobj);
   return res;
@@ -678,9 +676,8 @@ static PyObject* _custom_eval_frame(
   }
   // cache miss
   CacheEntry* cache_entry = extract_cache_entry(extra);
-  FrameState* frame_state = extract_frame_state(extra);
   PyObject* result =
-      call_callback(callback, frame, locals, cache_entry, frame_state);
+      call_callback(callback, frame, locals, cache_entry);
   Py_DECREF(locals);
   if (result == NULL) {
     // internal exception, returning here will leak the exception into user code

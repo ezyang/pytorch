@@ -56,7 +56,6 @@ class DynamoCallbackFn(Protocol):
         self,
         frame: DynamoFrameType,
         cache_entry: Optional[CacheEntry],
-        frame_state: FrameState,
     ) -> Optional[GuardedCode]:
         ...
 
