@@ -2769,7 +2769,6 @@ class InstructionTranslator(InstructionTranslatorBase):
         export,
         export_constraints,
         mutated_closure_cell_contents: Set[str],
-        frame_state,
         speculation_log: SpeculationLog,
         distributed_state: Optional[DistributedState],
     ) -> None:
@@ -2784,7 +2783,6 @@ class InstructionTranslator(InstructionTranslatorBase):
                 self,
                 export,
                 export_constraints,
-                frame_state,
                 local_scope=f_locals,
                 global_scope=f_globals,
                 f_code=f_code,

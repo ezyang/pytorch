@@ -347,6 +347,7 @@ def exception_handler(
 
 
 FRAME_COUNTER = 0
+FRAME_LOOKUP = {}
 FRAME_COMPILE_COUNTER: typing.Counter[
     Union[int, FrameStateSizeEntry]
 ] = collections.Counter()
@@ -449,7 +450,6 @@ class ConvertFrameAssert:
         frame: FrameType,
         cache_entry: Optional[CacheEntry],
         hooks: Hooks,
-        frame_state: Dict[str, Union[int, FrameStateSizeEntry]],
         *,
         skip: int = 0,
     ) -> Optional[GuardedCode]:
@@ -511,10 +511,11 @@ class ConvertFrameAssert:
         initial_global_state = GlobalStateGuard()
 
         global FRAME_COUNTER
-        if "_id" not in frame_state:
-            frame_state["_id"] = FRAME_COUNTER
+        code_key = (code.co_filename, code.co_firstlineno, code.co_name)
+        if code_key not in FRAME_LOOKUP:
+            FRAME_LOOKUP[code_key] = FRAME_COUNTER
             FRAME_COUNTER += 1
-        frame_id = frame_state["_id"]
+        frame_id = FRAME_LOOKUP[code_key]
         assert isinstance(frame_id, int)
 
         frame_compile_id = FRAME_COMPILE_COUNTER[frame_id]
@@ -554,7 +555,6 @@ class ConvertFrameAssert:
             cache_entry,
             cache_size,
             frame,
-            frame_state=frame_state,
             compile_id=compile_id,
             skip=skip + 1,
         )
@@ -605,7 +605,6 @@ def _compile(
     cache_entry: Optional[CacheEntry],
     cache_size: CacheSizeRelevantForFrame,
     frame: Optional[FrameType] = None,
-    frame_state: Optional[Dict[str, Union[int, FrameStateSizeEntry]]] = None,
     *,
     compile_id: CompileId,
     skip: int = 0,
@@ -647,7 +646,6 @@ def _compile(
             export,
             export_constraints,
             mutated_closure_cell_contents,
-            frame_state=frame_state,
             speculation_log=speculation_log,
             distributed_state=distributed_state,
         )
@@ -1142,7 +1140,6 @@ class ConvertFrame:
         frame: FrameType,
         cache_entry: Optional[CacheEntry],
         hooks: Hooks,
-        frame_state: Dict[str, Union[int, FrameStateSizeEntry]],
         skip: int = 0,
     ) -> Optional[
         Union[
@@ -1154,7 +1151,7 @@ class ConvertFrame:
         counters["frames"]["total"] += 1
         try:
             result = self._inner_convert(
-                frame, cache_entry, hooks, frame_state, skip=skip + 1
+                frame, cache_entry, hooks, skip=skip + 1
             )
             counters["frames"]["ok"] += 1
             return result
@@ -1257,7 +1254,6 @@ def replay(filename: str) -> None:
             cache_size=CacheSizeRelevantForFrame(0, 0),
             cache_entry=None,
             frame=None,
-            frame_state={},
             compile_id=CompileId(42, 999),
         )
     finally:
@@ -1279,7 +1275,6 @@ class ConvertFrameProtocol(typing.Protocol):
         frame: FrameType,
         cache_entry: Optional[CacheEntry],
         hooks: Hooks,
-        frame_state: Dict[str, Union[int, FrameStateSizeEntry]],
         *,
         skip: int = 0,
     ) -> Optional[GuardedCode]:
@@ -1296,10 +1291,7 @@ class CatchErrorsWrapper:
         self,
         frame: FrameType,
         cache_entry: Optional[CacheEntry],
-        frame_state: Dict[str, Union[int, FrameStateSizeEntry]],
     ) -> Optional[GuardedCode]:
-        assert frame_state is not None
-
         is_skipfile = trace_rules.check(frame.f_code)
         if sys.version_info >= (3, 13):
             has_started_execution = frame.f_lasti > first_real_inst_idx(frame.f_code)
@@ -1357,13 +1349,13 @@ class CatchErrorsWrapper:
                         )
                     )
                     return hijacked_callback(
-                        frame, cache_entry, self.hooks, frame_state
+                        frame, cache_entry, self.hooks
                     )
 
         with compile_lock, _disable_current_modes():
             # skip=1: skip this frame
             return self._torchdynamo_orig_callable(
-                frame, cache_entry, self.hooks, frame_state, skip=1
+                frame, cache_entry, self.hooks, skip=1
             )
 
 

@@ -51,7 +51,7 @@ from .exc import (
 )
 from .guards import GuardBuilder, install_guard
 from .mutation_guard import is_dynamic_nn_module
-from .pgo import put_automatic_dynamic_frame_state
+from .pgo import put_code_object_cache
 from .side_effects import AttributeMutationExisting, SideEffects
 from .source import (
     AttrSource,
@@ -245,7 +245,6 @@ class OutputGraph:
         root_tx,
         export: bool,
         export_constraints,
-        frame_state,
         local_scope: Scope,
         global_scope: Scope,
         f_code,
@@ -258,7 +257,6 @@ class OutputGraph:
         self.input_source_to_var: Dict[Source, VariableTracker] = {}
         self.export = export
         self.export_constraints = export_constraints
-        self.frame_state = frame_state
         # Map from graph input's `Source` to sizes / strides metadata
         self.input_source_to_sizes_strides: Dict[Source, Dict[str, Any]] = {}
         self.cleanup_hooks: List[Callable[[], Any]] = []
@@ -1301,7 +1299,8 @@ class OutputGraph:
 
     def run_compiler_collective(self, tx):
         # TODO: maybe we need to rename this function
-        put_automatic_dynamic_frame_state(tx, self.frame_state)
+
+        put_code_object_cache(tx)
 
         if (ds := tx.distributed_state) is not None and ds.all_states is None:
             compile_pg = ds.compile_pg

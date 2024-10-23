@@ -31,6 +31,7 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
+from typing_extensions import Self
 
 import torch
 from torch import SymInt
@@ -334,8 +335,26 @@ class BackwardStateGraphArg(GraphArg):
 @dataclasses.dataclass
 class FrameStateSizeEntry:
     scalar: Optional[int]
-    size: Optional[List[int]]
-    stride: Optional[List[int]]
+    size: Optional[List[Optional[int]]]
+    stride: Optional[List[Optional[int]]]
+
+    @staticmethod
+    def _merge_int(x: Optional[int], y: Optional[int]) -> Optional[int]:
+        if x is None or y is None or x != y:
+            return None
+        return x
+
+    @staticmethod
+    def _merge_int_list(xs: Optional[List[Optional[int]]], ys: Optional[List[Optional[int]]) -> Optional[List[Optional[int]]]:
+        if xs is None or ys is None or len(xs) != len(ys):
+            return None
+        return [self._merge_int(x, y) for x, y in zip(xs, ys)]
+
+    def __ior__(self, other: Self) -> Self:
+        self.scalar = self._merge_int(self.scalar, other.scalar)
+        self.size = self._merge_int_list(self.size, other.size)
+        self.stride = self._merge_int_list(self.stride, other.stride)
+        return self
 
 
 # All class-based iterators in itertools
