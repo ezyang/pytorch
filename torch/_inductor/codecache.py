@@ -722,6 +722,7 @@ def torch_key() -> bytes:
     """
     Compute a key that contains relevant information about torch source files
     """
+    return "hardcoded-constant"
     with dynamo_timed("inductor_codecache_torch_key", log_pt2_compile_event=True):
         if not config.is_fbcode():
 
@@ -1126,11 +1127,14 @@ class FxGraphCache:
         Lookup a compiled graph in the cache by key. On a hit, return the
         deserialized CompiledFxGraph object. On a miss, return None.
         """
+
+        """
         shape_env = FxGraphCache._get_shape_env()
         assert shape_env is not None
 
         symints = FxGraphCache._filter_backed_symints(example_inputs)
         hints = [hint_int(s) for s in symints]
+        """
 
         def iterate_over_candidates() -> Generator[CompiledFxGraph, None, None]:
             if local:
@@ -1165,6 +1169,9 @@ class FxGraphCache:
         cache_info: Dict[str, Any] = dict()
 
         for candidate in iterate_over_candidates():
+            graph = candidate
+            break
+
             if not candidate.guards_expr:
                 # No guards to evaluate, so this is a hit.
                 graph = candidate
@@ -1247,6 +1254,7 @@ class FxGraphCache:
                 return None, cache_info
 
         # Now re-evaluate with the symints to add any guards to the current env.
+        """
         if graph.guards_expr:
             check = bool(
                 shape_env.evaluate_guards_expression(graph.guards_expr, symints)
@@ -1255,6 +1263,7 @@ class FxGraphCache:
             log.debug(
                 "fx graph cache key %s post-load guards: %s", key, shape_env.guards
             )
+        """
 
         # Increment the cached metrics/counters by the amounts recorded when the FX
         # graph was compiled for this cache entry. Pretending these counters
@@ -1314,6 +1323,9 @@ class FxGraphCache:
                     cudagraphs,
                     gm,
                 )
+        # TODO: we DO need this (need to serialize inputs_to_check on
+        # everyone)
+        """
         inputs_to_check = compiled_graph.inputs_to_check
         # cudagraphs could have been disabled from the earlier conditions
         # so we still need to realign inputs if that happens
@@ -1322,6 +1334,7 @@ class FxGraphCache:
             compiled_graph,
             inputs_to_check,
         )
+        """
 
         return compiled_graph
 

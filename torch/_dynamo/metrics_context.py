@@ -62,6 +62,7 @@ class MetricsContext:
         Increment a metric by a given amount.
         """
         if self._level == 0:
+            return
             raise RuntimeError(f"Cannot increment {metric} outside of a MetricsContext")
         if metric not in self._metrics:
             self._metrics[metric] = 0

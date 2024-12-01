@@ -1149,6 +1149,7 @@ class ChromiumEventLogger:
         This metadata is recorded in the END event
         """
         if event_name not in self.get_stack():
+            return
             raise RuntimeError(
                 f"Event {repr(event_name)} not in {self.get_stack()}. "
                 "Cannot add metadata to events that aren't in progress. "

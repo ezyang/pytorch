@@ -369,12 +369,20 @@ class CompiledAOTI:
     _time_taken_ns: Optional[int] = None
     guards_expr: Optional[str] = None
 
-    # TODO: make this boxed
-    def __call__(self, *inputs: Sequence[Any]) -> Any:
+    _boxed_call: bool = True
+
+    def __call__(self, inputs: Sequence[Any]) -> Any:
         assert self._current_callable is not None
         return self._current_callable.run(
             inputs
         )  # NB: this doesn't actually do boxed convention
+
+    # TODO: Work out proper post compile protocol
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._current_callable = torch._C._aoti.AOTIModelPackageLoader(
+            self.filename, "model"
+        )
 
     def post_compile(
         self,
@@ -385,9 +393,10 @@ class CompiledAOTI:
         # TODO: use compile id for model name
         # NB: Pretty sure we don't need the pytree stuff, Dynamo to Inductor
         # guarantees flat
-        self._current_callable = torch._C._aoti.AOTIModelPackageLoader(
-            self.filename, "model"
-        )
+        if self._current_callable is None:
+            self._current_callable = torch._C._aoti.AOTIModelPackageLoader(
+                self.filename, "model"
+            )
 
     # TODO: a "stripped" post_compile that can be done without all of the
     # random arguments crap here
