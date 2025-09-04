@@ -337,6 +337,16 @@ class LocalTensorMode(TorchDispatchMode):
                     if not self.ranks:
                         raise ValueError("No common ranks between LocalTensors")
 
+        if func.namespace == 'c10d':
+            print(func)
+            if func is torch.ops.c10d.allreduce_.default:
+                return _local_all_reduce(*args, **kwargs)
+            elif func is torch.ops.c10d.broadcast_.default:
+                return _local_broadcast(*args, **kwargs)
+            elif func is torch.ops.c10d.all_gather_.default:
+                return _local_all_gather(*args, **kwargs)
+            raise NotImplementedError(f"{func} not implemented")
+
         flat_rank_rets = {}
         for r in sorted(self.ranks):
             rank_flat_args = [

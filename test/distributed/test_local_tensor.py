@@ -4,7 +4,6 @@ import unittest
 
 import torch
 import torch.distributed as dist
-from torch.distributed._distributed_c10d import FakeProcessGroup
 from torch.distributed._local_tensor import LocalTensor, LocalTensorMode
 from torch.testing._internal.distributed.fake_pg import FakeStore
 
@@ -296,7 +295,11 @@ class TestLocalTensor(unittest.TestCase):
             1: torch.tensor([[2.0, 1.0], [3.0, 6.0]]),
             2: torch.tensor([[3.0, 2.0], [1.0, 4.0]]),
         }
-        fake_pg = FakeProcessGroup(rank=0, world_size=3)
+        fake_store = FakeStore()
+        torch.distributed.init_process_group(
+            "fake", store=fake_store, rank=0, world_size=3
+        )
+        fake_pg = torch.distributed.distributed_c10d._get_default_group()
 
         # Test SUM reduction
         lt_sum = LocalTensor({k: v.clone() for k, v in test_tensors.items()})
@@ -326,7 +329,11 @@ class TestLocalTensor(unittest.TestCase):
             1: torch.tensor([[5.0, 6.0], [7.0, 8.0]]),
         }
         lt = LocalTensor(test_tensors)
-        fake_pg = FakeProcessGroup(rank=0, world_size=2)
+        fake_store = FakeStore()
+        torch.distributed.init_process_group(
+            "fake", store=fake_store, rank=0, world_size=2
+        )
+        fake_pg = torch.distributed.distributed_c10d._get_default_group()
 
         with LocalTensorMode():
             # Test all_reduce within mode
