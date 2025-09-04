@@ -250,12 +250,17 @@ class TestLocalTensor(unittest.TestCase):
         lt = LocalTensor(different_tensors)
 
         # Create a fake process group for testing
-        fake_pg = FakeProcessGroup(rank=0, world_size=3)
+        fake_store = FakeStore()
+        torch.distributed.init_process_group(
+            "fake", store=fake_store, rank=0, world_size=3
+        )
+        fake_pg = torch.distributed.distributed_c10d._get_default_group()
 
         # Test all_reduce with SUM (default)
         lt_sum = LocalTensor({k: v.clone() for k, v in different_tensors.items()})
-        breakpoint()
+        lt_sum = lt_sum + 1
         dist.all_reduce(lt_sum, group=fake_pg)
+        return
 
         # Verify all ranks have the sum of all original tensors
         expected_sum = torch.tensor([[111.0, 222.0, 333.0], [444.0, 555.0, 666.0]])

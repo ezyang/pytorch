@@ -268,16 +268,15 @@ class LocalTensor(torch.Tensor):
         if kwargs is None:
             kwargs = {}
 
-        # Extract LocalTensor from args to get ranks
+        # This is horribly inefficient
+        flat_args, args_spec = pytree.tree_flatten((args, kwargs))
         local_tensor = None
-        for arg in args:
+        for arg in flat_args:
             if isinstance(arg, LocalTensor):
                 local_tensor = arg
                 break
 
-        if local_tensor is None:
-            # Fallback - should not happen in normal usage
-            return func(*args, **kwargs)
+        assert local_tensor is not None
 
         with LocalTensorMode(local_tensor._ranks):
             return func(*args, **kwargs)
@@ -337,8 +336,6 @@ class LocalTensorMode(TorchDispatchMode):
                     self.ranks = self.ranks & a._ranks
                     if not self.ranks:
                         raise ValueError("No common ranks between LocalTensors")
-
-        print(func)
 
         flat_rank_rets = {}
         for r in sorted(self.ranks):
