@@ -54,6 +54,111 @@ from torch.utils._python_dispatch import TorchDispatchMode
 
 not_implemented_log = torch._logging.getArtifactLogger(__name__, "not_implemented")
 
+# Monkey patch distributed functions to detect LocalTensor usage
+_original_all_reduce = None
+_original_broadcast = None
+_original_all_gather = None
+
+
+def _has_local_tensor(*args):
+    """Check if any arguments contain LocalTensor."""
+    for arg in args:
+        if isinstance(arg, LocalTensor):
+            return True
+        if isinstance(arg, (list, tuple)):
+            for item in arg:
+                if isinstance(item, LocalTensor):
+                    return True
+    return False
+
+
+def _local_all_reduce(tensor, op=None, group=None, async_op=False):
+    """Implement all_reduce for LocalTensor by applying the reduction operation across all local tensors."""
+    import torch.distributed as dist
+
+    if async_op:
+        raise NotImplementedError(
+            "async_op=True is not supported for LocalTensor collectives"
+        )
+
+    # Get reduction operation
+    if op is None:
+        op = dist.ReduceOp.SUM
+
+    # Apply reduction across all local tensors
+    reduced_tensors = {}
+    all_local_tensors = list(tensor._local_tensors.values())
+
+    for rank in tensor._local_tensors:
+        if op == dist.ReduceOp.SUM:
+            reduced_tensors[rank] = torch.stack(all_local_tensors).sum(dim=0)
+        elif op == dist.ReduceOp.PRODUCT:
+            result = all_local_tensors[0].clone()
+            for t in all_local_tensors[1:]:
+                result = result * t
+            reduced_tensors[rank] = result
+        elif op == dist.ReduceOp.MIN:
+            reduced_tensors[rank] = torch.stack(all_local_tensors).min(dim=0)[0]
+        elif op == dist.ReduceOp.MAX:
+            reduced_tensors[rank] = torch.stack(all_local_tensors).max(dim=0)[0]
+        else:
+            raise ValueError(f"Unsupported reduction operation: {op}")
+
+    # Update tensor in place (all_reduce is in-place)
+    tensor._local_tensors = reduced_tensors
+    return None
+
+
+def _local_broadcast(tensor, src, group=None, async_op=False):
+    """Implement broadcast for LocalTensor by copying src rank's tensor to all ranks."""
+    if async_op:
+        raise NotImplementedError(
+            "async_op=True is not supported for LocalTensor collectives"
+        )
+
+    # Get the source tensor
+    if src not in tensor._local_tensors:
+        raise ValueError(
+            f"Source rank {src} not found in LocalTensor ranks {list(tensor._local_tensors.keys())}"
+        )
+
+    src_tensor = tensor._local_tensors[src]
+
+    # Broadcast to all ranks (copy src tensor to all local tensors)
+    for rank in tensor._local_tensors:
+        tensor._local_tensors[rank] = src_tensor.clone()
+
+    return None
+
+
+def _local_all_gather(tensor_list, tensor, group=None, async_op=False):
+    """Implement all_gather for LocalTensor by gathering all local tensors from each rank."""
+    if async_op:
+        raise NotImplementedError(
+            "async_op=True is not supported for LocalTensor collectives"
+        )
+
+    if not isinstance(tensor, LocalTensor):
+        raise ValueError("Input tensor must be LocalTensor for LocalTensor all_gather")
+
+    # Gather all tensors from each rank
+    gathered_tensors = []
+    for rank in sorted(tensor._local_tensors.keys()):
+        gathered_tensors.append(tensor._local_tensors[rank])
+
+    # Fill the tensor_list with gathered tensors
+    for i, gathered_tensor in enumerate(gathered_tensors):
+        if i < len(tensor_list):
+            if isinstance(tensor_list[i], LocalTensor):
+                # If output is LocalTensor, fill all its local tensors with the gathered tensor
+                for rank in tensor_list[i]._local_tensors:
+                    tensor_list[i]._local_tensors[rank] = gathered_tensor.clone()
+            else:
+                # If output is regular tensor, copy directly
+                tensor_list[i].copy_(gathered_tensor)
+
+    return None
+
 
 class LocalTensor(torch.Tensor):
     # Map from global rank to the local tensor
@@ -233,7 +338,7 @@ class LocalTensorMode(TorchDispatchMode):
                     if not self.ranks:
                         raise ValueError("No common ranks between LocalTensors")
 
-        # TODO: bail out if collective by testing on func
+        print(func)
 
         flat_rank_rets = {}
         for r in sorted(self.ranks):
