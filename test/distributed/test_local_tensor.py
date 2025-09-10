@@ -246,54 +246,7 @@ class TestLocalTensor(TestCase):
             )
             self.assertEqual(result._local_tensors[rank], expected)
 
-    def test_collective_operations_work(self):
-        """Test that collective operations work correctly with LocalTensor."""
-        # Create different tensors for each rank
-        different_tensors = {
-            0: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
-            1: torch.tensor([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]]),
-            2: torch.tensor([[100.0, 200.0, 300.0], [400.0, 500.0, 600.0]]),
-        }
-        lt = LocalTensor(different_tensors)
-
-        # Create a fake process group for testing
-        fake_store = FakeStore()
-        torch.distributed.init_process_group(
-            "fake", store=fake_store, rank=0, world_size=3
-        )
-        fake_pg = torch.distributed.distributed_c10d._get_default_group()
-
-        # Test all_reduce with SUM (default)
-        lt_sum = LocalTensor({k: v.clone() for k, v in different_tensors.items()})
-        lt_sum = lt_sum + 1
-        dist.all_reduce(lt_sum, group=fake_pg)
-
-        # Verify all ranks have the sum of all tensors (after adding 1 to each)
-        expected_sum = torch.tensor([[114.0, 225.0, 336.0], [447.0, 558.0, 669.0]])
-        for rank in different_tensors.keys():
-            self.assertEqual(lt_sum._local_tensors[rank], expected_sum)
-
-        # Test broadcast from rank 1
-        lt_broadcast = LocalTensor({k: v.clone() for k, v in different_tensors.items()})
-        dist.broadcast(lt_broadcast, src=1, group=fake_pg)
-
-        # Verify all ranks have rank 1's original tensor
-        expected_broadcast = different_tensors[1]
-        for rank in different_tensors.keys():
-            self.assertEqual(lt_broadcast._local_tensors[rank], expected_broadcast)
-
-        # Test all_gather
-        lt_gather = LocalTensor(different_tensors)
-        tensor_list = [torch.zeros_like(different_tensors[0]) for _ in range(3)]
-        dist.all_gather(tensor_list, lt_gather, group=fake_pg)
-
-        # Verify each position in tensor_list contains the corresponding rank's tensor
-        self.assertEqual(tensor_list[0], different_tensors[0])
-        self.assertEqual(tensor_list[1], different_tensors[1])
-        self.assertEqual(tensor_list[2], different_tensors[2])
-
     def test_collective_reduction_operations(self):
-        return
         """Test different reduction operations for all_reduce."""
         # Create different tensors for each rank with simple values for testing
         test_tensors = {
@@ -362,6 +315,83 @@ class TestLocalTensor(TestCase):
             # Test that regular operations still work
             result = lt + 1.0
             self.assertIsInstance(result, LocalTensor)
+
+    def test_all_reduce_collective(self):
+        """Test that all_reduce collective operation works correctly with LocalTensor."""
+        # Create different tensors for each rank
+        different_tensors = {
+            0: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+            1: torch.tensor([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]]),
+            2: torch.tensor([[100.0, 200.0, 300.0], [400.0, 500.0, 600.0]]),
+        }
+
+        # Create a fake process group for testing
+        fake_store = FakeStore()
+        torch.distributed.init_process_group(
+            "fake", store=fake_store, rank=0, world_size=3
+        )
+        fake_pg = torch.distributed.distributed_c10d._get_default_group()
+
+        # Test all_reduce with SUM (default)
+        lt_sum = LocalTensor({k: v.clone() for k, v in different_tensors.items()})
+        lt_sum = lt_sum + 1
+        dist.all_reduce(lt_sum, group=fake_pg)
+
+        # Verify all ranks have the sum of all tensors (after adding 1 to each)
+        expected_sum = torch.tensor([[114.0, 225.0, 336.0], [447.0, 558.0, 669.0]])
+        for rank in different_tensors.keys():
+            self.assertEqual(lt_sum._local_tensors[rank], expected_sum)
+
+    def test_broadcast_collective(self):
+        """Test that broadcast collective operation works correctly with LocalTensor."""
+        # Create different tensors for each rank
+        different_tensors = {
+            0: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+            1: torch.tensor([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]]),
+            2: torch.tensor([[100.0, 200.0, 300.0], [400.0, 500.0, 600.0]]),
+        }
+
+        # Create a fake process group for testing
+        fake_store = FakeStore()
+        torch.distributed.init_process_group(
+            "fake", store=fake_store, rank=0, world_size=3
+        )
+        fake_pg = torch.distributed.distributed_c10d._get_default_group()
+
+        # Test broadcast from rank 1
+        lt_broadcast = LocalTensor({k: v.clone() for k, v in different_tensors.items()})
+        dist.broadcast(lt_broadcast, src=1, group=fake_pg)
+
+        # Verify all ranks have rank 1's original tensor
+        expected_broadcast = different_tensors[1]
+        for rank in different_tensors.keys():
+            self.assertEqual(lt_broadcast._local_tensors[rank], expected_broadcast)
+
+    def test_all_gather_collective(self):
+        """Test that all_gather collective operation works correctly with LocalTensor."""
+        # Create different tensors for each rank
+        different_tensors = {
+            0: torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+            1: torch.tensor([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]]),
+            2: torch.tensor([[100.0, 200.0, 300.0], [400.0, 500.0, 600.0]]),
+        }
+
+        # Create a fake process group for testing
+        fake_store = FakeStore()
+        torch.distributed.init_process_group(
+            "fake", store=fake_store, rank=0, world_size=3
+        )
+        fake_pg = torch.distributed.distributed_c10d._get_default_group()
+
+        # Test all_gather
+        lt_gather = LocalTensor(different_tensors)
+        tensor_list = [torch.zeros_like(different_tensors[0]) for _ in range(3)]
+        dist.all_gather(tensor_list, lt_gather, group=fake_pg)
+
+        # Verify each position in tensor_list contains the corresponding rank's tensor
+        self.assertEqual(tensor_list[0], different_tensors[0])
+        self.assertEqual(tensor_list[1], different_tensors[1])
+        self.assertEqual(tensor_list[2], different_tensors[2])
 
     def test_non_collective_operations_work(self):
         """Test that regular operations still work and don't trigger collective detection."""

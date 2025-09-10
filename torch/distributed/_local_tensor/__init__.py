@@ -264,7 +264,8 @@ def _local_broadcast_(
 
         # Broadcast the source tensor to all ranks in this group
         for rank in group_ranks:
-            tensor._local_tensors[rank].copy_(source_tensor)
+            if source_rank != rank:
+                tensor._local_tensors[rank].copy_(source_tensor)
 
     work = FakeWork()
     work_so = Work.boxed(work)
@@ -276,7 +277,7 @@ def _local_all_gather_(
 ):
     # "allgather_(Tensor[][] output_tensors, Tensor[] input_tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, bool async_op=True, int timeout=-1) -> (Tensor[][], __torch__.torch.classes.c10d.Work)");
 
-    assert len(output_tensors) == 1
+    assert len(output_tensorss) == 1
     assert len(input_tensors) == 1
     output_tensors = output_tensorss[0]
     input_tensor = input_tensors[0]
@@ -482,7 +483,7 @@ class LocalTensorMode(TorchDispatchMode):
                 return _local_all_reduce_(*args, **kwargs)
             elif func is torch.ops.c10d.broadcast_.default:
                 return _local_broadcast_(*args, **kwargs)
-            elif func is torch.ops.c10d.all_gather_.default:
+            elif func is torch.ops.c10d.allgather_.default:
                 return _local_all_gather_(*args, **kwargs)
             raise NotImplementedError(f"{func} not implemented")
 
