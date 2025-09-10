@@ -43,21 +43,93 @@ the Layout corresponding to the participating ranks, with respect to the global
 world size.
 """
 
+import os
+import sys
+
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "../../../third_party/cutlass/python"))
+
 from typing import Sequence
 
 import torch
 from torch import Tensor
 from torch._export.wrappers import mark_subclass_constructor_exportable_experimental
+from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp
 from torch.utils import _pytree as pytree
 from torch.utils._python_dispatch import TorchDispatchMode
 
 
 not_implemented_log = torch._logging.getArtifactLogger(__name__, "not_implemented")
 
-# Monkey patch distributed functions to detect LocalTensor usage
-_original_all_reduce = None
-_original_broadcast = None
-_original_all_gather = None
+
+from pycute.int_tuple import is_int, is_tuple, flatten
+from pycute.layout import Layout, complement
+
+
+# TODO: this claude code implementation sucks, redo it
+def indices_to_layout(indices):
+    """
+    Convert a sorted list of indices to a pycute Layout using the mathematical
+    approach based on the admissible for complement property.
+
+    Args:
+        indices: A sorted list of integers starting from 0
+
+    Returns:
+        Layout: A pycute Layout that generates the given indices
+    """
+    if not indices:
+        return Layout(0, 0)
+
+    if len(indices) == 1:
+        if indices[0] == 0:
+            return Layout(1, 1)
+        else:
+            raise ValueError("Single index must be 0")
+
+    strides = []
+    shapes = []
+    remaining = set(indices)
+
+    # Always start with stride 1
+    current_stride = 1
+    max_iterations = len(indices)  # Safety limit
+    iteration = 0
+
+    while remaining and iteration < max_iterations:
+        iteration += 1
+
+        # Count consecutive multiples of current_stride starting from 0
+        size = 0
+        while size * current_stride in remaining:
+            size += 1
+
+        if size > 0:
+            # Found a valid dimension - remove all multiples
+            for i in range(size):
+                remaining.discard(i * current_stride)
+            strides.append(current_stride)
+            shapes.append(size)
+
+            # Calculate next stride using admissible property
+            current_stride = current_stride * size
+        else:
+            # No pattern from 0, jump to minimum remaining element
+            if remaining:
+                current_stride = min(remaining)
+            else:
+                break
+
+    if iteration >= max_iterations:
+        raise RuntimeError(
+            f"Algorithm did not converge after {max_iterations} iterations"
+        )
+
+    # Convert to proper format for Layout
+    if len(shapes) == 1:
+        return Layout(shapes[0], strides[0])
+    else:
+        return Layout(tuple(shapes), tuple(strides))
 
 
 def _has_local_tensor(*args):
@@ -72,41 +144,35 @@ def _has_local_tensor(*args):
     return False
 
 
-def _local_all_reduce(tensor, op=None, group=None, async_op=False):
+# NB: lifted from https://github.com/pytorch/pytorch/pull/161016
+def layout_to_indices(layout):
+    return [
+        sum(c * s for c, s in zip(coord, flatten(self.strides)))
+        for coord in product(*(range(s) for s in flatten(self.sizes)))
+    ]
+
+
+def _local_all_reduce(
+    tensors, process_group_so, reduce_op_so, sparse_indices, async_op=True, timeout=-1
+):
     """Implement all_reduce for LocalTensor by applying the reduction operation across all local tensors."""
-    import torch.distributed as dist
 
-    if async_op:
-        raise NotImplementedError(
-            "async_op=True is not supported for LocalTensor collectives"
-        )
+    process_group = ProcessGroup.unbox(process_group_so)
+    reduce_op = ReduceOp.unbox(reduce_op_so)
 
-    # Get reduction operation
-    if op is None:
-        op = dist.ReduceOp.SUM
+    ranks = torch.distributed.get_process_group_ranks(process_group)
+    assert ranks
+    ranks.sort()
+    offset = ranks[0]
+    ranks = [r - offset for r in ranks]
+    layout = indices_to_layout(ranks)
 
-    # Apply reduction across all local tensors
-    reduced_tensors = {}
-    all_local_tensors = list(tensor._local_tensors.values())
-
-    for rank in tensor._local_tensors:
-        if op == dist.ReduceOp.SUM:
-            reduced_tensors[rank] = torch.stack(all_local_tensors).sum(dim=0)
-        elif op == dist.ReduceOp.PRODUCT:
-            result = all_local_tensors[0].clone()
-            for t in all_local_tensors[1:]:
-                result = result * t
-            reduced_tensors[rank] = result
-        elif op == dist.ReduceOp.MIN:
-            reduced_tensors[rank] = torch.stack(all_local_tensors).min(dim=0)[0]
-        elif op == dist.ReduceOp.MAX:
-            reduced_tensors[rank] = torch.stack(all_local_tensors).max(dim=0)[0]
-        else:
-            raise ValueError(f"Unsupported reduction operation: {op}")
-
-    # Update tensor in place (all_reduce is in-place)
-    tensor._local_tensors = reduced_tensors
-    return None
+    global_pg = torch.distributed.distributed_c10d._get_default_group()
+    for group_offset in layout_to_indices(complement(layout, global_pg.size())):
+        # For the tensors in this group [group_offset + r for r in ranks]
+        # perform the allreduce on them
+        # IMPLEMENT ME
+        pass
 
 
 def _local_broadcast(tensor, src, group=None, async_op=False):
@@ -337,8 +403,7 @@ class LocalTensorMode(TorchDispatchMode):
                     if not self.ranks:
                         raise ValueError("No common ranks between LocalTensors")
 
-        if func.namespace == 'c10d':
-            print(func)
+        if func.namespace == "c10d":
             if func is torch.ops.c10d.allreduce_.default:
                 return _local_all_reduce(*args, **kwargs)
             elif func is torch.ops.c10d.broadcast_.default:

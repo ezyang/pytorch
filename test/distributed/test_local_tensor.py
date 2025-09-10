@@ -5,10 +5,11 @@ import unittest
 import torch
 import torch.distributed as dist
 from torch.distributed._local_tensor import LocalTensor, LocalTensorMode
+from torch.testing._internal.common_utils import run_tests, TestCase
 from torch.testing._internal.distributed.fake_pg import FakeStore
 
 
-class TestLocalTensor(unittest.TestCase):
+class TestLocalTensor(TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
         self.device = torch.device("cpu")
@@ -29,6 +30,13 @@ class TestLocalTensor(unittest.TestCase):
             1: base_tensor.clone(),
             2: base_tensor.clone(),
         }
+
+    def tearDown(self):
+        super().tearDown()
+        try:
+            dist.destroy_process_group()
+        except AssertionError:
+            pass
 
     def test_local_tensor_creation(self):
         """Test basic LocalTensor creation."""
@@ -121,14 +129,14 @@ class TestLocalTensor(unittest.TestCase):
             expected = (
                 self.identical_local_tensors[rank] + self.identical_local_tensors[rank]
             )
-            torch.testing.assert_close(result_add._local_tensors[rank], expected)
+            self.assertEqual(result_add._local_tensors[rank], expected)
 
         # Test multiplication
         result_mul = lt1 * 2.0
         self.assertIsInstance(result_mul, LocalTensor)
         for rank in self.identical_local_tensors.keys():
             expected = self.identical_local_tensors[rank] * 2.0
-            torch.testing.assert_close(result_mul._local_tensors[rank], expected)
+            self.assertEqual(result_mul._local_tensors[rank], expected)
 
     def test_tensor_operations(self):
         """Test various tensor operations on LocalTensors."""
@@ -163,7 +171,7 @@ class TestLocalTensor(unittest.TestCase):
 
         for rank in self.identical_local_tensors.keys():
             expected = self.identical_local_tensors[rank] + regular_tensor
-            torch.testing.assert_close(result._local_tensors[rank], expected)
+            self.assertEqual(result._local_tensors[rank], expected)
 
     def test_gradient_propagation(self):
         """Test that gradients work correctly with LocalTensors."""
@@ -236,7 +244,7 @@ class TestLocalTensor(unittest.TestCase):
                 .transpose(0, 1)
                 .sum(dim=0)
             )
-            torch.testing.assert_close(result._local_tensors[rank], expected)
+            self.assertEqual(result._local_tensors[rank], expected)
 
     def test_collective_operations_work(self):
         """Test that collective operations work correctly with LocalTensor."""
@@ -264,7 +272,7 @@ class TestLocalTensor(unittest.TestCase):
         # Verify all ranks have the sum of all original tensors
         expected_sum = torch.tensor([[111.0, 222.0, 333.0], [444.0, 555.0, 666.0]])
         for rank in different_tensors.keys():
-            torch.testing.assert_close(lt_sum._local_tensors[rank], expected_sum)
+            self.assertEqual(lt_sum._local_tensors[rank], expected_sum)
 
         # Test broadcast from rank 1
         lt_broadcast = LocalTensor({k: v.clone() for k, v in different_tensors.items()})
@@ -273,9 +281,7 @@ class TestLocalTensor(unittest.TestCase):
         # Verify all ranks have rank 1's original tensor
         expected_broadcast = different_tensors[1]
         for rank in different_tensors.keys():
-            torch.testing.assert_close(
-                lt_broadcast._local_tensors[rank], expected_broadcast
-            )
+            self.assertEqual(lt_broadcast._local_tensors[rank], expected_broadcast)
 
         # Test all_gather
         lt_gather = LocalTensor(different_tensors)
@@ -283,9 +289,9 @@ class TestLocalTensor(unittest.TestCase):
         dist.all_gather(tensor_list, lt_gather, group=fake_pg)
 
         # Verify each position in tensor_list contains the corresponding rank's tensor
-        torch.testing.assert_close(tensor_list[0], different_tensors[0])
-        torch.testing.assert_close(tensor_list[1], different_tensors[1])
-        torch.testing.assert_close(tensor_list[2], different_tensors[2])
+        self.assertEqual(tensor_list[0], different_tensors[0])
+        self.assertEqual(tensor_list[1], different_tensors[1])
+        self.assertEqual(tensor_list[2], different_tensors[2])
 
     def test_collective_reduction_operations(self):
         """Test different reduction operations for all_reduce."""
@@ -306,21 +312,21 @@ class TestLocalTensor(unittest.TestCase):
         dist.all_reduce(lt_sum, op=dist.ReduceOp.SUM, group=fake_pg)
         expected_sum = torch.tensor([[6.0, 7.0], [6.0, 15.0]])  # Sum of all tensors
         for rank in test_tensors.keys():
-            torch.testing.assert_close(lt_sum._local_tensors[rank], expected_sum)
+            self.assertEqual(lt_sum._local_tensors[rank], expected_sum)
 
         # Test MAX reduction
         lt_max = LocalTensor({k: v.clone() for k, v in test_tensors.items()})
         dist.all_reduce(lt_max, op=dist.ReduceOp.MAX, group=fake_pg)
         expected_max = torch.tensor([[3.0, 4.0], [3.0, 6.0]])  # Max across all tensors
         for rank in test_tensors.keys():
-            torch.testing.assert_close(lt_max._local_tensors[rank], expected_max)
+            self.assertEqual(lt_max._local_tensors[rank], expected_max)
 
         # Test MIN reduction
         lt_min = LocalTensor({k: v.clone() for k, v in test_tensors.items()})
         dist.all_reduce(lt_min, op=dist.ReduceOp.MIN, group=fake_pg)
         expected_min = torch.tensor([[1.0, 1.0], [1.0, 4.0]])  # Min across all tensors
         for rank in test_tensors.keys():
-            torch.testing.assert_close(lt_min._local_tensors[rank], expected_min)
+            self.assertEqual(lt_min._local_tensors[rank], expected_min)
 
     def test_collectives_within_local_tensor_mode(self):
         """Test that collective operations work within LocalTensorMode context."""
@@ -342,16 +348,14 @@ class TestLocalTensor(unittest.TestCase):
 
             expected_sum = torch.tensor([[6.0, 8.0], [10.0, 12.0]])
             for rank in test_tensors.keys():
-                torch.testing.assert_close(lt_sum._local_tensors[rank], expected_sum)
+                self.assertEqual(lt_sum._local_tensors[rank], expected_sum)
 
             # Test broadcast within mode
             lt_broadcast = LocalTensor({k: v.clone() for k, v in test_tensors.items()})
             dist.broadcast(lt_broadcast, src=0, group=fake_pg)
 
             for rank in test_tensors.keys():
-                torch.testing.assert_close(
-                    lt_broadcast._local_tensors[rank], test_tensors[0]
-                )
+                self.assertEqual(lt_broadcast._local_tensors[rank], test_tensors[0])
 
             # Test that regular operations still work
             result = lt + 1.0
@@ -375,4 +379,4 @@ class TestLocalTensor(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    run_tests()
