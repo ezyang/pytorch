@@ -58,7 +58,8 @@ from typing import Sequence
 import torch
 from torch import Tensor
 from torch._export.wrappers import mark_subclass_constructor_exportable_experimental
-from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp
+from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp, Work
+from torch.distributed._distributed_c10d import FakeWork
 from torch.utils import _pytree as pytree
 from torch.utils._python_dispatch import TorchDispatchMode
 import operator
@@ -208,6 +209,10 @@ def _local_all_reduce_(
         for rank in group_ranks:
             if rank in tensor._local_tensors:
                 tensor._local_tensors[rank].copy_(reduced_tensor)
+
+    work = FakeWork()
+    work_so = Work.boxed(work)
+    return (tensors, work_so)
 
 
 def _local_broadcast(tensor, src, group=None, async_op=False):
