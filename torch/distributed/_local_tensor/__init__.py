@@ -161,7 +161,7 @@ def layout_to_indices(layout):
 def _local_all_reduce_(
     tensors, process_group_so, reduce_op_so, sparse_indices, async_op=True, timeout=-1
 ):
-    """Implement all_reduce for LocalTensor by applying the reduction operation across all local tensors."""
+    # "allreduce_(Tensor[] tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, __torch__.torch.classes.c10d.ReduceOp reduce_op, Tensor? sparse_indices, bool async_op=True, int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)");
 
     assert len(tensors) == 1
     tensor = tensors[0]
@@ -215,55 +215,12 @@ def _local_all_reduce_(
     return (tensors, work_so)
 
 
-def _local_broadcast(tensor, src, group=None, async_op=False):
-    """Implement broadcast for LocalTensor by copying src rank's tensor to all ranks."""
-    if async_op:
-        raise NotImplementedError(
-            "async_op=True is not supported for LocalTensor collectives"
-        )
-
-    # Get the source tensor
-    if src not in tensor._local_tensors:
-        raise ValueError(
-            f"Source rank {src} not found in LocalTensor ranks {list(tensor._local_tensors.keys())}"
-        )
-
-    src_tensor = tensor._local_tensors[src]
-
-    # Broadcast to all ranks (copy src tensor to all local tensors)
-    for rank in tensor._local_tensors:
-        tensor._local_tensors[rank] = src_tensor.clone()
-
-    return None
+def _local_broadcast_(...):
+    # "broadcast_(Tensor[] tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, int root_rank, int root_tensor, bool async_op=True, int timeout=-1) -> (Tensor[], __torch__.torch.classes.c10d.Work)");
 
 
-def _local_all_gather(tensor_list, tensor, group=None, async_op=False):
-    """Implement all_gather for LocalTensor by gathering all local tensors from each rank."""
-    if async_op:
-        raise NotImplementedError(
-            "async_op=True is not supported for LocalTensor collectives"
-        )
-
-    if not isinstance(tensor, LocalTensor):
-        raise ValueError("Input tensor must be LocalTensor for LocalTensor all_gather")
-
-    # Gather all tensors from each rank
-    gathered_tensors = []
-    for rank in sorted(tensor._local_tensors.keys()):
-        gathered_tensors.append(tensor._local_tensors[rank])
-
-    # Fill the tensor_list with gathered tensors
-    for i, gathered_tensor in enumerate(gathered_tensors):
-        if i < len(tensor_list):
-            if isinstance(tensor_list[i], LocalTensor):
-                # If output is LocalTensor, fill all its local tensors with the gathered tensor
-                for rank in tensor_list[i]._local_tensors:
-                    tensor_list[i]._local_tensors[rank] = gathered_tensor.clone()
-            else:
-                # If output is regular tensor, copy directly
-                tensor_list[i].copy_(gathered_tensor)
-
-    return None
+def _local_all_gather_(...):
+    # "allgather_(Tensor[][] output_tensors, Tensor[] input_tensors, __torch__.torch.classes.c10d.ProcessGroup process_group, bool async_op=True, int timeout=-1) -> (Tensor[][], __torch__.torch.classes.c10d.Work)");
 
 
 class LocalTensor(torch.Tensor):
@@ -439,9 +396,9 @@ class LocalTensorMode(TorchDispatchMode):
             if func is torch.ops.c10d.allreduce_.default:
                 return _local_all_reduce_(*args, **kwargs)
             elif func is torch.ops.c10d.broadcast_.default:
-                return _local_broadcast(*args, **kwargs)
+                return _local_broadcast_(*args, **kwargs)
             elif func is torch.ops.c10d.all_gather_.default:
-                return _local_all_gather(*args, **kwargs)
+                return _local_all_gather_(*args, **kwargs)
             raise NotImplementedError(f"{func} not implemented")
 
         flat_rank_rets = {}
