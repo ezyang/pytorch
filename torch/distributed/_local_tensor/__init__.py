@@ -47,8 +47,12 @@ import os
 import sys
 
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../third_party/cutlass/python"))
+sys.path.append(
+    os.path.join(os.path.dirname(__file__), "../../../third_party/cutlass/python")
+)
 
+import functools
+from itertools import product
 from typing import Sequence
 
 import torch
@@ -57,13 +61,14 @@ from torch._export.wrappers import mark_subclass_constructor_exportable_experime
 from torch.distributed.distributed_c10d import ProcessGroup, ReduceOp
 from torch.utils import _pytree as pytree
 from torch.utils._python_dispatch import TorchDispatchMode
+import operator
 
 
 not_implemented_log = torch._logging.getArtifactLogger(__name__, "not_implemented")
 
 
-from pycute.int_tuple import is_int, is_tuple, flatten
-from pycute.layout import Layout, complement
+from pycute.int_tuple import flatten, is_int, is_tuple
+from pycute.layout import complement, Layout
 
 
 # TODO: this claude code implementation sucks, redo it
@@ -147,15 +152,18 @@ def _has_local_tensor(*args):
 # NB: lifted from https://github.com/pytorch/pytorch/pull/161016
 def layout_to_indices(layout):
     return [
-        sum(c * s for c, s in zip(coord, flatten(self.strides)))
-        for coord in product(*(range(s) for s in flatten(self.sizes)))
+        sum(c * s for c, s in zip(coord, flatten(layout.stride)))
+        for coord in product(*(range(s) for s in flatten(layout.shape)))
     ]
 
 
-def _local_all_reduce(
+def _local_all_reduce_(
     tensors, process_group_so, reduce_op_so, sparse_indices, async_op=True, timeout=-1
 ):
     """Implement all_reduce for LocalTensor by applying the reduction operation across all local tensors."""
+
+    assert len(tensors) == 1
+    tensor = tensors[0]
 
     process_group = ProcessGroup.unbox(process_group_so)
     reduce_op = ReduceOp.unbox(reduce_op_so)
@@ -167,12 +175,39 @@ def _local_all_reduce(
     ranks = [r - offset for r in ranks]
     layout = indices_to_layout(ranks)
 
+    if not isinstance(tensor, LocalTensor):
+        raise ValueError(f"Expected LocalTensor for local all_reduce, got {tensor}")
+
     global_pg = torch.distributed.distributed_c10d._get_default_group()
     for group_offset in layout_to_indices(complement(layout, global_pg.size())):
         # For the tensors in this group [group_offset + r for r in ranks]
         # perform the allreduce on them
-        # IMPLEMENT ME
-        pass
+        group_ranks = [group_offset + r for r in ranks]
+
+        # Collect tensors from the specified ranks in this group
+        group_tensors = []
+        for rank in group_ranks:
+            assert rank in tensor._local_tensors
+            group_tensors.append(tensor._local_tensors[rank])
+
+        # Perform the reduction operation
+        if reduce_op == ReduceOp.SUM:
+            op = operator.add
+        elif reduce_op == ReduceOp.PRODUCT:
+            op = operator.mul
+        elif reduce_op == ReduceOp.MIN:
+            op = torch.minimum
+        elif reduce_op == ReduceOp.MAX:
+            op = torch.maximum
+        else:
+            raise NotImplementedError(f"ReduceOp {reduce_op} not implemented")
+
+        reduced_tensor = functools.reduce(op, group_tensors)
+
+        # Update all tensors in the group with the reduced result
+        for rank in group_ranks:
+            if rank in tensor._local_tensors:
+                tensor._local_tensors[rank].copy_(reduced_tensor)
 
 
 def _local_broadcast(tensor, src, group=None, async_op=False):
@@ -363,7 +398,7 @@ def _check_for_subclass_arg(x: object) -> bool:
 
 class LocalTensorMode(TorchDispatchMode):
     # What ranks this local tensor mode is operating over
-    def __init__(self, ranks: frozenset[int] = None):
+    def __init__(self, ranks: frozenset[int]):
         self.ranks = ranks
 
     def __torch_dispatch__(self, func, types, args=(), kwargs=None):
@@ -379,10 +414,6 @@ class LocalTensorMode(TorchDispatchMode):
             # No LocalTensors involved, pass through to regular dispatch
             return func(*args, **kwargs)
 
-        # Use ranks from the first LocalTensor if not specified
-        if self.ranks is None:
-            self.ranks = local_tensors[0]._ranks
-
         # Check for unrecognized tensor subclasses (but allow regular tensors and scalars)
         has_unrecognized_types = _check_for_subclass(flat_args)
         if has_unrecognized_types:
@@ -397,15 +428,11 @@ class LocalTensorMode(TorchDispatchMode):
         # For LocalTensors, verify they have compatible ranks
         for a in flat_args:
             if isinstance(a, LocalTensor):
-                # For different rank sets, use intersection
-                if a._ranks != self.ranks:
-                    self.ranks = self.ranks & a._ranks
-                    if not self.ranks:
-                        raise ValueError("No common ranks between LocalTensors")
+                assert a._ranks == self.ranks
 
         if func.namespace == "c10d":
             if func is torch.ops.c10d.allreduce_.default:
-                return _local_all_reduce(*args, **kwargs)
+                return _local_all_reduce_(*args, **kwargs)
             elif func is torch.ops.c10d.broadcast_.default:
                 return _local_broadcast(*args, **kwargs)
             elif func is torch.ops.c10d.all_gather_.default:
